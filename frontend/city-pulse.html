@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>City Pulse — Urban Intelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@300;400;500&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+html,body{height:100%;overflow:hidden;}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13px;}
+.app{display:grid;grid-template-columns:56px 1fr;grid-template-rows:44px 1fr;height:100vh;}
+.topbar{grid-column:1/-1;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 12px 0 0;z-index:100;}
+.top-brand{font-family:var(--mono);font-size:11px;letter-spacing:.12em;padding:0 16px;border-right:1px solid var(--border);height:44px;display:flex;align-items:center;}
+.top-nav{display:flex;flex:1;}
+.tnav{height:44px;padding:0 14px;font-family:var(--mono);font-size:10px;letter-spacing:.07em;color:var(--muted);background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;}
+.tnav:hover,.tnav.active{color:var(--text);border-bottom-color:var(--text);}
+.top-right{margin-left:auto;display:flex;align-items:center;gap:12px;}
+.live-pill{display:flex;align-items:center;gap:5px;font-family:var(--mono);font-size:9px;color:var(--green);}
+.live-dot{width:5px;height:5px;background:var(--green);border-radius:50%;animation:pulse 1.4s ease-in-out infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.2}}
+.clk{font-family:var(--mono);font-size:10px;color:var(--dim);}
+.sidenav{background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;padding:12px 0;gap:4px;}
+.snav{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px;border:none;background:none;color:var(--muted);}
+.snav:hover,.snav.active{background:var(--surface2);color:var(--text);}
+.pages{overflow:hidden;position:relative;}
+.page{display:none;height:100%;overflow-y:auto;}
+.page.active{display:flex;flex-direction:column;}
+.map-page{display:grid!important;grid-template-columns:196px 1fr 252px;height:100%;}
+.lpanel,.rpanel{background:var(--surface);border-right:1px solid var(--border);overflow-y:auto;}
+.rpanel{border-left:1px solid var(--border);border-right:none;}
+.plabel{font-family:var(--mono);font-size:9px;letter-spacing:.18em;color:var(--dim);padding:14px 14px 7px;text-transform:uppercase;}
+.drow{display:flex;align-items:center;padding:7px 14px;gap:9px;cursor:pointer;border-left:2px solid transparent;}
+.drow:hover{background:var(--bg);}.drow.active{border-left-color:var(--text);background:var(--bg);}
+.map-area{position:relative;background:var(--bg);overflow:hidden;}
+#city-canvas{width:100%;height:100%;display:block;}
+.map-bot{position:absolute;bottom:0;left:0;right:0;padding:9px 14px;background:var(--surface);border-top:1px solid var(--border);display:flex;align-items:center;gap:10px;}
+.ttag{font-family:var(--mono);font-size:8px;letter-spacing:.14em;color:var(--red);}
+.tmsg{font-family:var(--mono);font-size:9px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;}
+.analytics-page,.predict-page,.history-page,.alerts-page{padding:24px 28px;overflow-y:auto;}
+.page-header{margin-bottom:20px;}
+.page-title{font-size:18px;font-weight:600;}
+.chart-wrap{height:180px;position:relative;}
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;}
+.kpi-n{font-family:var(--mono);font-size:22px;font-weight:300;}
+.kpi-l{font-family:var(--mono);font-size:8px;letter-spacing:.12em;color:var(--dim);text-transform:uppercase;margin-top:4px;}
+.chart-grid{display:grid;grid-template-columns:2fr 1fr;gap:16px;}
+.chart-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;}
+.forecast-table{width:100%;border-collapse:collapse;font-size:11px;}
+.forecast-table th{font-family:var(--mono);font-size:8px;text-transform:uppercase;color:var(--dim);text-align:left;padding:8px;border-bottom:1px solid var(--border);}
+.forecast-table td{padding:8px;border-bottom:1px solid var(--border);}
+.alerts-list{background:var(--surface);border:1px solid var(--border);border-radius:8px;}
+.al-row{display:grid;grid-template-columns:90px 1fr 120px 100px 80px;padding:10px 14px;border-bottom:1px solid var(--border);align-items:center;font-size:11px;}
+.al-th{display:grid;grid-template-columns:90px 1fr 120px 100px 80px;padding:8px 14px;background:var(--surface2);font-family:var(--mono);font-size:8px;text-transform:uppercase;color:var(--dim);}
+.sec-title{font-size:13px;font-weight:600;margin:16px 0 12px;}
+.theme-btn{width:30px;height:30px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;cursor:pointer;}
+</style>
+</head>
+<body>
+<div class="app">
+<header class="topbar">
+  <div class="top-brand">CITY PULSE</div>
+  <nav class="top-nav">
+    <button class="tnav active" onclick="showPage('map',this)">LIVE MAP</button>
+    <button class="tnav" onclick="showPage('analytics',this)">ANALYTICS</button>
+    <button class="tnav" onclick="showPage('predictions',this)">PREDICTIONS</button>
+    <button class="tnav" onclick="showPage('history',this)">HISTORY</button>
+    <button class="tnav" onclick="showPage('alerts',this)">ALERTS <span id="alert-badge" style="font-family:var(--mono);font-size:8px;background:var(--red);color:#fff;border-radius:3px;padding:1px 5px;margin-left:4px">0</span></button>
+  </nav>
+  <div class="top-right">
+    <div class="live-pill" id="live-pill"><div class="live-dot" id="live-dot"></div><span id="live-label">LIVE</span></div>
+    <div class="clk" id="clock">--:--:--</div>
+    <button class="theme-btn" onclick="toggleTheme()" id="theme-btn">☀</button>
+  </div>
+</header>
+<nav class="sidenav">
+  <button class="snav active" onclick="showPage('map',null,this)">🗺</button>
+  <button class="snav" onclick="showPage('analytics',null,this)">📊</button>
+  <button class="snav" onclick="showPage('predictions',null,this)">🔮</button>
+  <button class="snav" onclick="showPage('history',null,this)">⏱</button>
+  <button class="snav" onclick="showPage('alerts',null,this)">🔔</button>
+</nav>
+<div class="pages">
+  <div class="page map-page active" id="page-map">
+    <aside class="lpanel"><div class="plabel">Districts</div><div id="dlist"></div></aside>
+    <main class="map-area">
+      <canvas id="city-canvas"></canvas>
+      <div class="map-bot"><span class="ttag">FEED</span><span class="tmsg" id="ticker">—</span></div>
+    </main>
+    <aside class="rpanel">
+      <div style="padding:14px;border-bottom:1px solid var(--border)">
+        <div class="plabel" style="padding:0 0 8px">District</div>
+        <div id="selname" style="font-size:15px;font-weight:600">—</div>
+        <div id="meters" style="margin-top:12px"></div>
+      </div>
+      <div style="padding:14px"><div class="plabel" style="padding:0 0 8px">Feed</div><div id="feed"></div></div>
+      <div style="padding:14px;border-top:1px solid var(--border)"><div class="plabel" style="padding:0 0 8px">Log</div><div class="mono" style="font-size:9px;color:var(--dim);line-height:1.7" id="log"></div></div>
+    </aside>
+  </div>
+  <div class="page analytics-page" id="page-analytics">
+    <div class="page-header"><div class="page-title">Analytics</div><div style="font-family:var(--mono);font-size:10px;color:var(--muted)">WatsonX · Redis · PostgreSQL</div></div>
+    <div class="kpi-row" id="kpi-row"></div>
+    <div class="chart-grid">
+      <div class="chart-card"><div style="font-weight:600;margin-bottom:12px">Crowd density</div><div class="chart-wrap"><canvas id="chart-crowd"></canvas></div></div>
+      <div class="chart-card"><div style="font-weight:600;margin-bottom:12px">Risk mix</div><div class="chart-wrap"><canvas id="chart-risk"></canvas></div></div>
+    </div>
+  </div>
+  <div class="page predict-page" id="page-predictions"><div class="page-header"><div class="page-title">Predictions</div></div><div id="pred-cards" class="chart-grid" style="grid-template-columns:1fr 1fr"></div></div>
+  <div class="page history-page" id="page-history"><div class="page-header"><div class="page-title">History</div></div><div class="chart-card"><canvas id="chart-timeline" height="120"></canvas></div><div class="sec-title">Event log</div><div id="event-log-list"></div></div>
+  <div class="page alerts-page" id="page-alerts"><div class="page-header"><div class="page-title">Alerts</div></div><div class="alerts-list"><div class="al-th"><span>Severity</span><span>Alert</span><span>District</span><span>Time</span><span>Status</span></div><div id="alerts-rows"></div></div></div>
+</div>
+</div>
+<script>
+const API = window.location.origin;
+const WS = API.replace(/^http/,'ws');
+let data=[], sel, ws=null, chartCrowd, chartRisk, frame=0, phase=0;
+let reconnectAttempts=0;
+
+async function apiGet(p){ const r=await fetch(API+p); if(!r.ok) return null; return r.json(); }
+
+function pipCol(risk){ return risk>.6?'#c0392b':risk>.38?'#b35a00':'#888580'; }
+function mCls(v){ return v>.65?'hi':v>.4?'mid':'lo'; }
+
+function mapApiDistricts(rows){
+  return rows.map(d=>({
+    id:d.id,name:d.name,
+    risk:+d.risk,crowd:+d.crowd,sent:+d.sentiment,events:+d.events||0,
+    x:d.x,y:d.y,r:d.r
+  }));
+}
+
+async function initData(){
+  const districts = await apiGet('/api/districts');
+  if(districts&&districts.length){ data = mapApiDistricts(districts); }
+  else { data = [{id:'downtown',name:'Downtown',risk:.5,crowd:.5,sent:.5,events:0,x:.5,y:.4,r:50}]; }
+  sel=data[0];
+  const ev = await apiGet('/api/events?limit=8');
+  window.__feed = ev||[];
+  const al = await apiGet('/api/alerts?status=open&limit=20');
+  window.__alerts = al||[];
+  document.getElementById('alert-badge').textContent = (al&&al.length)||0;
+  renderAlerts(al);
+}
+function renderAlerts(al){
+  const host=document.getElementById('alerts-rows');
+  if(!host) return;
+  host.innerHTML=(al||[]).map(a=>`<div class="al-row">
+    <span>${(a.severity||'').toUpperCase()}</span><div><strong>${a.title||''}</strong><div style="font-size:9px;color:var(--muted)">${a.description||''}</div></div>
+    <span>${a.district_id||'—'}</span><span style="font-family:var(--mono);font-size:9px">${(a.created_at||'').slice(11,19)||''}</span><span>${a.status||''}</span>
+  </div>`).join('') || '<div style="padding:14px;color:var(--muted)">No open alerts</div>';
+}
+
+function buildList(){
+  document.getElementById('dlist').innerHTML = data.map(d=>
+    `<div class="drow ${d.id===sel.id?'active':''}" onclick="pick('${d.id}')">
+      <div style="width:6px;height:6px;border-radius:50%;background:${pipCol(d.risk)}"></div>
+      <div style="flex:1;font-size:11px">${d.name}</div>
+      <div style="font-family:var(--mono);font-size:10px">${Math.round(d.risk*100)}</div>
+    </div>`).join('');
+}
+function pick(id){ sel=data.find(x=>x.id===id)||data[0]; buildList(); buildRight(); }
+function buildRight(){
+  const d=sel; if(!d) return;
+  document.getElementById('selname').textContent=d.name;
+  document.getElementById('meters').innerHTML=[
+    ['Crowd',d.crowd,false],['Sentiment',d.sent,true],['Risk',d.risk,false]
+  ].map(([lb,v,inv])=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+    <span style="font-family:var(--mono);font-size:9px;width:68px;color:var(--muted)">${lb}</span>
+    <div style="flex:1;height:3px;background:var(--border);border-radius:2px"><div style="height:100%;width:${Math.round((inv?1-v:v)*100)}%;background:var(--text);border-radius:2px"></div></div>
+    <span style="font-family:var(--mono);font-size:9px;width:28px;text-align:right">${Math.round((inv?1-v:v)*100)}</span>
+  </div>`).join('');
+}
+function buildFeed(){
+  const F = window.__feed||[];
+  document.getElementById('feed').innerHTML = F.slice(0,6).map(f=>
+    `<div style="padding:8px 0;border-bottom:1px solid var(--border);font-size:10px">
+      <span style="color:${f.color||'#888'}">${f.type}</span> · ${(f.text||'').slice(0,120)}
+    </div>`).join('') || '<div style="color:var(--muted);font-size:10px">No feed items</div>';
+}
+async function buildLog(){
+  const L = await apiGet('/api/logs?limit=8');
+  document.getElementById('log').innerHTML = (L||[]).map(([ts,lvl,msg])=>`<div>${ts} [${lvl}] ${msg}</div>`).join('');
+}
+
+function connectWS(){
+  try{
+    ws = new WebSocket(WS+'/ws/districts');
+    ws.onmessage = (e)=>{
+      let msg; try{ msg=JSON.parse(e.data);}catch{return;}
+      if(msg.type==='districts_update' && msg.data){
+        msg.data.forEach(up=>{
+          const i=data.findIndex(x=>x.id===up.id);
+          if(i>=0){ data[i].crowd=+up.crowd; data[i].sent=+up.sentiment; data[i].risk=+up.risk; data[i].events=+up.events||0; }
+        });
+        sel=data.find(x=>x.id===sel.id)||data[0];
+        buildList(); buildRight();
+      }
+      if(msg.type==='ping'){ try{ ws.send('pong'); }catch(_){} }
+    };
+    ws.onopen=()=>{ reconnectAttempts=0; document.getElementById('live-label').textContent='LIVE'; document.getElementById('live-dot').style.background='var(--green)'; };
+    ws.onclose=()=>{ document.getElementById('live-label').textContent='OFFLINE'; document.getElementById('live-dot').style.background='var(--amber)'; setTimeout(connectWS, Math.min(30000,1000*2**reconnectAttempts++)); };
+  }catch{ setTimeout(connectWS,3000); }
+}
+
+const canvas=document.getElementById('city-canvas'); const ctx=canvas.getContext('2d');
+function resize(){ const r=canvas.parentElement.getBoundingClientRect(); canvas.width=r.width; canvas.height=r.height; }
+function draw(){
+  const W=canvas.width,H=canvas.height; const dark=document.documentElement.dataset.theme==='dark';
+  ctx.clearRect(0,0,W,H);
+  ctx.strokeStyle = dark?'rgba(255,255,255,.06)':'rgba(0,0,0,.06)';
+  for(let x=0;x<W;x+=32){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for(let y=0;y<H;y+=32){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+  data.forEach(d=>{
+    const cx=W*d.x, cy=H*d.y, rad=d.r*(W/900);
+    ctx.beginPath(); ctx.arc(cx,cy,rad,0,Math.PI*2);
+    ctx.strokeStyle=pipCol(d.risk); ctx.lineWidth=d.id===sel.id?2:1; ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx,cy,3,0,Math.PI*2); ctx.fillStyle=pipCol(d.risk); ctx.fill();
+    ctx.font=`${Math.max(9,W/120)}px Instrument Sans,sans-serif`; ctx.fillStyle=dark?'#e8e6e0':'#111';
+    ctx.textAlign='center'; ctx.fillText(d.name,cx,cy+rad+12);
+  });
+  frame++; phase+=.02; requestAnimationFrame(draw);
+}
+canvas.addEventListener('click',e=>{
+  const rect=canvas.getBoundingClientRect(), mx=e.clientX-rect.left, my=e.clientY-rect.top;
+  const W=canvas.width,H=canvas.height;
+  const hit=data.find(d=>Math.hypot(mx-W*d.x,my-H*d.y)<d.r*(W/900)*1.2);
+  if(hit) pick(hit.id);
+});
+
+function showPage(id,nav,side){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.getElementById('page-'+id).classList.add('active');
+  document.querySelectorAll('.tnav').forEach((b,i)=>b.classList.toggle('active', ['map','analytics','predictions','history','alerts'][i]===id));
+  document.querySelectorAll('.snav').forEach((b,i)=>b.classList.toggle('active', ['map','analytics','predictions','history','alerts'][i]===id));
+  if(nav) nav.classList.add('active');
+  if(side) side.classList.add('active');
+  if(id==='analytics') initCharts();
+}
+
+async function initCharts(){
+  const api = await apiGet('/api/analytics?range=1h');
+  if(!api||typeof Chart==='undefined') return;
+  const labels = api.labels||[];
+  const crowd = api.crowd_series||[];
+  const rd = api.risk_distribution||[1,2,2,1];
+  const g=document.getElementById('chart-crowd');
+  if(chartCrowd) chartCrowd.destroy();
+  chartCrowd=new Chart(g,{type:'line',data:{labels,datasets:[{data:crowd,borderColor:'#111',tension:.35,pointRadius:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}}}});
+  const g2=document.getElementById('chart-risk');
+  if(chartRisk) chartRisk.destroy();
+  chartRisk=new Chart(g2,{type:'doughnut',data:{labels:['High','Elevated','Normal','Low'],datasets:[{data:rd,backgroundColor:['#c0392b','#b35a00','#888580','#1a6b3a']}]},options:{responsive:true,maintainAspectRatio:false,cutout:'65%'}});
+  const kp = api.kpis||{};
+  document.getElementById('kpi-row').innerHTML = ['peak_density','inference_latency','active_events','cache_hit_rate'].map(k=>
+    `<div class="kpi"><div class="kpi-n">${kp[k]||'—'}</div><div class="kpi-l">${k.replace(/_/g,' ')}</div></div>`).join('');
+}
+
+function toggleTheme(){
+  const h=document.documentElement, dark=h.dataset.theme==='dark';
+  h.dataset.theme=dark?'light':'dark';
+  document.getElementById('theme-btn').textContent=dark?'☀':'☾';
+}
+setInterval(()=>{ document.getElementById('clock').textContent=new Date().toLocaleTimeString(undefined,{hour12:false}); },1000);
+
+(async function boot(){
+  await initData();
+  buildList(); buildRight(); buildFeed(); await buildLog();
+  const t=(window.__feed[0]&&window.__feed[0].text)||'City Pulse live';
+  document.getElementById('ticker').textContent=t;
+  connectWS();
+  resize(); window.addEventListener('resize',resize);
+  draw();
+})();
+</script>
+</body>
+</html>

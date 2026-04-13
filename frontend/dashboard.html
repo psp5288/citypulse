@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>The Eye — DevCity Pulse</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;600;700&display=swap" rel="stylesheet" />
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <link rel="stylesheet" href="/css/main.css" />
+
+  <style>
+    /* Leaflet tooltip override for this page */
+    .dc-map-tooltip { background:#181818; border:1px solid #272727; color:#888888; font-family:'IBM Plex Mono',monospace; font-size:10px; border-radius:4px; padding:5px 10px; }
+    .dc-map-tooltip::before { display:none; }
+    .leaflet-tooltip.dc-map-tooltip { box-shadow:0 4px 20px rgba(0,0,0,.5); }
+  </style>
+</head>
+<body>
+
+  <div class="dc-shell">
+
+    <!-- News ticker -->
+    <div class="dc-ticker" id="dc-ticker">
+      <div class="dc-ticker__label">LIVE INTEL</div>
+      <div class="dc-ticker__track">
+        <div class="dc-ticker__inner" id="ticker-inner">
+          <!-- Populated by dashboard.js -->
+          <span class="dc-ticker__item info">
+            <span class="dc-ticker__item-zone">System</span>
+            Connecting to city intelligence feeds…
+          </span>
+          <span class="dc-ticker__item info">
+            <span class="dc-ticker__item-zone">WatsonX</span>
+            AI scoring engine initialising…
+          </span>
+          <span class="dc-ticker__item">
+            <span class="dc-ticker__item-zone">DevCity Pulse</span>
+            Swarm agent simulation platform ready
+          </span>
+          <!-- Duplicate for seamless loop -->
+          <span class="dc-ticker__item info">
+            <span class="dc-ticker__item-zone">System</span>
+            Connecting to city intelligence feeds…
+          </span>
+          <span class="dc-ticker__item info">
+            <span class="dc-ticker__item-zone">WatsonX</span>
+            AI scoring engine initialising…
+          </span>
+          <span class="dc-ticker__item">
+            <span class="dc-ticker__item-zone">DevCity Pulse</span>
+            Swarm agent simulation platform ready
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Top bar -->
+    <header class="dc-topbar">
+      <div class="dc-brand">
+        <div class="dc-brand__icon">CP</div>
+        <div>
+          <div class="dc-brand__text">DevCity Pulse</div>
+          <div class="dc-brand__sub">Urban Intelligence</div>
+        </div>
+      </div>
+      <nav class="dc-nav">
+        <a href="/">Home</a>
+        <a href="/dashboard" class="active">The Eye</a>
+        <a href="/simulator">The Oracle</a>
+        <a href="/analytics">Analytics</a>
+      </nav>
+      <div class="dc-topbar-spacer"></div>
+
+      <!-- System status pills -->
+      <div class="dc-sys-status">
+        <span class="dc-sys-pill online" id="sys-watsonx">WatsonX ●</span>
+        <span class="dc-sys-pill online" id="sys-redis">Redis ●</span>
+        <span class="dc-sys-pill" id="sys-ws">WS —</span>
+      </div>
+
+      <div class="dc-clock">
+        <span class="dc-clock__date" id="topbar-date"></span>
+        <span id="topbar-clock"></span>
+      </div>
+
+      <button class="dc-alert-badge" id="alerts-btn" title="Active alerts">
+        ⚠ Alerts <span id="alerts-count">0</span>
+      </button>
+
+      <div class="live-badge" id="live-badge" aria-live="polite">
+        <span class="live-dot"></span>
+        <span class="live-label">LIVE</span>
+      </div>
+    </header>
+
+    <!-- Main 3-col grid -->
+    <div class="dc-main">
+
+      <!-- Left panel: continent > country > district -->
+      <aside class="dc-panel" aria-label="Districts">
+        <div class="dc-panel__header">
+          <span class="dc-panel__title">Monitoring Scope</span>
+          <span class="dc-panel__count" id="district-count">—</span>
+        </div>
+        <div style="padding:8px;border-bottom:1px solid var(--bg-border)" id="continent-tabs"></div>
+        <div class="zone-list" id="country-list" style="border-bottom:1px solid var(--bg-border)"></div>
+        <div class="zone-list" id="zone-list">
+          <div class="skeleton" style="height:72px;margin:6px"></div>
+          <div class="skeleton" style="height:72px;margin:6px"></div>
+        </div>
+      </aside>
+
+      <!-- Center: Leaflet map -->
+      <main class="dc-map-wrap" aria-label="City map">
+        <div id="dc-map"></div>
+
+        <!-- Map HUD: top-left stats -->
+        <div class="map-hud map-hud--tl" id="map-hud-stats">
+          <div class="map-stat-block">
+            <div class="map-stat-row">
+              <span class="map-stat-dot" style="background:#C47070"></span>
+              Critical Risk
+              <span class="map-stat-val" id="hud-critical">—</span>
+            </div>
+            <div class="map-stat-row">
+              <span class="map-stat-dot" style="background:#C4A840"></span>
+              High Risk
+              <span class="map-stat-val" id="hud-high">—</span>
+            </div>
+            <div class="map-stat-row">
+              <span class="map-stat-dot" style="background:#5DAF78"></span>
+              Low Risk
+              <span class="map-stat-val" id="hud-low">—</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Map HUD: bottom-right last update -->
+        <div class="map-hud map-hud--br">
+          <div class="map-stat-block">
+            <div class="map-stat-row" style="font-size:8px">
+              Last update: <span class="map-stat-val" id="last-update" style="font-size:8px">—</span>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <!-- Right panel: district detail -->
+      <aside class="dc-panel dc-panel--right" aria-label="District detail">
+        <div class="dc-detail__head">
+          <span class="dc-detail__title" id="detail-title">Select a district</span>
+          <span class="live-tag" id="detail-tag"></span>
+        </div>
+        <div class="dc-detail__body" id="detail-body">
+          <div class="dc-detail--empty">
+            <p style="color:var(--text-muted);font-family:var(--font-mono);font-size:11px;line-height:1.8">
+              Click the map or a district<br/>in the left panel
+            </p>
+          </div>
+        </div>
+      </aside>
+
+    </div><!-- /.dc-main -->
+
+    <!-- Bottom scorecard bar -->
+    <div class="dc-bottom" id="bottom-bar" role="region" aria-label="District scorecards">
+      <!-- Populated by dashboard.js -->
+    </div>
+
+  </div><!-- /.dc-shell -->
+
+  <!-- Alert toasts -->
+  <div id="alert-container"></div>
+
+  <!-- SR-only live region -->
+  <p style="position:absolute;left:-9999px" aria-live="polite">
+    Last updated: <span id="sr-last-update"></span>
+  </p>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/map.js"></script>
+  <script src="/js/dashboard.js"></script>
+
+</body>
+</html>

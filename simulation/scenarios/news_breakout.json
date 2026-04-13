@@ -1,0 +1,20 @@
+{
+  "scenario_id": "news_breakout",
+  "title": "Breaking: major infrastructure failure",
+  "description": "Rapid spread of unverified reports during a transit outage",
+  "sector": "news",
+  "default_zone": "nyc-brooklyn",
+  "news_item": "Breaking: multiple subway lines are experiencing system-wide delays after an unconfirmed signal failure. Officials have not issued a timeline for restoration.",
+  "external_factors": [
+    {
+      "type": "confirmation_leak",
+      "content": "A leaked internal memo appears to confirm equipment faults at two interlocking plants",
+      "inject_at_minute": 15
+    },
+    {
+      "type": "authority_denial",
+      "content": "Transit authority spokesperson states there is no evidence of a citywide outage",
+      "inject_at_minute": 40
+    }
+  ]
+}

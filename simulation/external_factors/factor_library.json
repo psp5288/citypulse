@@ -1,0 +1,28 @@
+{
+  "factors": [
+    {
+      "id": "counter_rumour",
+      "label": "Counter Rumour",
+      "description": "A competing narrative contradicting the main news",
+      "effect": "Reduces negative sentiment by 15-25%, increases neutral"
+    },
+    {
+      "id": "authority_denial",
+      "label": "Authority Denial",
+      "description": "An official source publicly denies the news",
+      "effect": "Splits reaction — increases skeptic engagement, reduces institutional trust"
+    },
+    {
+      "id": "viral_controversy",
+      "label": "Viral Controversy",
+      "description": "An unrelated controversy floods the information space",
+      "effect": "Reduces virality of main story by 30-50%, drowns passive consumers"
+    },
+    {
+      "id": "confirmation_leak",
+      "label": "Confirmation Leak",
+      "description": "A leaked document appears to confirm the story",
+      "effect": "Amplifies negative sentiment by 20-35%, spikes emotional reactors"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "scenario_id": "banking_crisis",
+  "title": "Bank announces interest rate increase",
+  "description": "Central bank raises rates by 1.5% effective immediately",
+  "sector": "banking",
+  "default_zone": "nyc-manhattan",
+  "news_item": "The Federal Reserve has announced an emergency 1.5% interest rate increase effective immediately, citing inflation concerns.",
+  "external_factors": [
+    {
+      "type": "counter_rumour",
+      "content": "Anonymous sources suggest the rate hike may be reversed within 90 days",
+      "inject_at_minute": 45
+    }
+  ]
+}

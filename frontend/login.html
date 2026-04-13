@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>City Pulse — Sign In</title>
+<link rel="stylesheet" href="/assets/style.css">
+<style>
+body {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  position: relative;
+}
+body::before {
+  content: ''; position: absolute; inset: 0; z-index: -1;
+  background-image:
+    linear-gradient(var(--border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border) 1px, transparent 1px);
+  background-size: 64px 64px; opacity: .25;
+}
+.auth-wrap { width: 100%; max-width: 380px; padding: 24px; }
+.auth-header { text-align: center; margin-bottom: 36px; }
+.auth-logo {
+  width: 36px; height: 36px; border: 2px solid var(--text); border-radius: 8px;
+  display: inline-flex; align-items: center; justify-content: center;
+  margin-bottom: 16px;
+}
+.auth-logo-dot {
+  width: 10px; height: 10px; background: var(--text); border-radius: 50%;
+  animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.2} }
+.auth-brand {
+  font-family: var(--mono); font-size: 12px; font-weight: 500;
+  letter-spacing: .15em; margin-bottom: 6px;
+}
+.auth-sub { font-size: 13px; color: var(--muted); }
+
+.auth-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 28px; margin-bottom: 16px;
+}
+.auth-tabs {
+  display: flex; gap: 0; margin-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+}
+.auth-tab {
+  flex: 1; padding: 10px; text-align: center;
+  font-family: var(--mono); font-size: 10px; letter-spacing: .08em;
+  color: var(--muted); background: none; border: none;
+  border-bottom: 2px solid transparent; cursor: pointer;
+  transition: var(--transition);
+}
+.auth-tab.active { color: var(--text); border-bottom-color: var(--text); }
+.auth-tab:hover { color: var(--text); }
+
+.field { margin-bottom: 16px; }
+.field-label {
+  display: block; font-family: var(--mono); font-size: 9px;
+  letter-spacing: .12em; color: var(--dim); text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.auth-error {
+  font-family: var(--mono); font-size: 10px; color: var(--red);
+  text-align: center; margin-bottom: 12px; min-height: 14px;
+}
+.auth-submit { width: 100%; margin-top: 4px; }
+.auth-guest {
+  text-align: center; margin-top: 16px;
+}
+.auth-guest a {
+  font-family: var(--mono); font-size: 10px; color: var(--muted);
+  letter-spacing: .06em;
+}
+.auth-guest a:hover { color: var(--text); }
+
+.corner-theme {
+  position: fixed; top: 16px; right: 16px;
+}
+.theme-toggle {
+  width: 32px; height: 32px; background: var(--surface2);
+  border: 1px solid var(--border); border-radius: 6px;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  font-size: 14px; transition: var(--transition);
+}
+.theme-toggle:hover { border-color: var(--border2); }
+</style>
+</head>
+<body>
+
+<div class="corner-theme">
+  <button class="theme-toggle" onclick="toggleTheme()" id="theme-btn">☀</button>
+</div>
+
+<div class="auth-wrap">
+  <div class="auth-header">
+    <div class="auth-logo"><div class="auth-logo-dot"></div></div>
+    <div class="auth-brand">CITY PULSE</div>
+    <div class="auth-sub">Urban intelligence platform</div>
+  </div>
+
+  <div class="auth-card">
+    <div class="auth-tabs">
+      <button class="auth-tab active" onclick="switchTab('login')">SIGN IN</button>
+      <button class="auth-tab" onclick="switchTab('register')">CREATE ACCOUNT</button>
+    </div>
+
+    <form id="auth-form" onsubmit="handleSubmit(event)">
+      <div class="field">
+        <label class="field-label" for="email">Email</label>
+        <input class="input" type="email" id="email" placeholder="you@example.com" required autocomplete="email">
+      </div>
+      <div class="field">
+        <label class="field-label" for="password">Password</label>
+        <input class="input" type="password" id="password" placeholder="••••••••" required autocomplete="current-password">
+      </div>
+      <div class="auth-error" id="error"></div>
+      <button type="submit" class="btn btn-primary auth-submit" id="submit-btn">SIGN IN</button>
+    </form>
+  </div>
+
+  <div class="auth-guest">
+    <a href="/dashboard">Continue as guest (view only) →</a>
+  </div>
+</div>
+
+<script>
+let mode = 'login';
+
+function toggleTheme() {
+  const h = document.documentElement, dark = h.dataset.theme === 'dark';
+  h.dataset.theme = dark ? 'light' : 'dark';
+  document.getElementById('theme-btn').textContent = dark ? '☀' : '☾';
+  localStorage.setItem('theme', h.dataset.theme);
+}
+const saved = localStorage.getItem('theme');
+if (saved) {
+  document.documentElement.dataset.theme = saved;
+  document.getElementById('theme-btn').textContent = saved === 'dark' ? '☾' : '☀';
+}
+
+function switchTab(tab) {
+  mode = tab;
+  document.querySelectorAll('.auth-tab').forEach((t, i) => {
+    t.classList.toggle('active', (i === 0 && tab === 'login') || (i === 1 && tab === 'register'));
+  });
+  document.getElementById('submit-btn').textContent = tab === 'login' ? 'SIGN IN' : 'CREATE ACCOUNT';
+  document.getElementById('error').textContent = '';
+  document.getElementById('password').autocomplete = tab === 'login' ? 'current-password' : 'new-password';
+}
+
+async function handleSubmit(e) {
+  e.preventDefault();
+  const email = document.getElementById('email').value;
+  const password = document.getElementById('password').value;
+  const errorEl = document.getElementById('error');
+  const btn = document.getElementById('submit-btn');
+  errorEl.textContent = '';
+  btn.disabled = true;
+  btn.textContent = mode === 'login' ? 'SIGNING IN...' : 'CREATING...';
+
+  try {
+    const endpoint = mode === 'login' ? '/api/auth/login' : '/api/auth/register';
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      errorEl.textContent = data.detail || 'Something went wrong';
+      return;
+    }
+
+    if (mode === 'register') {
+      switchTab('login');
+      errorEl.style.color = 'var(--green)';
+      errorEl.textContent = 'Account created — sign in below';
+      return;
+    }
+
+    localStorage.setItem('citypulse_token', data.access_token);
+    if (data.refresh_token) localStorage.setItem('citypulse_refresh', data.refresh_token);
+    window.location.href = '/dashboard';
+  } catch (err) {
+    errorEl.textContent = 'Network error — is the server running?';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = mode === 'login' ? 'SIGN IN' : 'CREATE ACCOUNT';
+  }
+}
+
+if (localStorage.getItem('citypulse_token')) {
+  window.location.href = '/dashboard';
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DevCity Pulse — Urban Intelligence Platform</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/main.css" />
+</head>
+<body class="page-home">
+
+  <!-- Top bar -->
+  <header class="dc-topbar">
+    <div class="dc-brand">
+      <div class="dc-brand__icon">CP</div>
+      <div>
+        <div class="dc-brand__text">DevCity Pulse</div>
+        <div class="dc-brand__sub">Urban Intelligence</div>
+      </div>
+    </div>
+    <nav class="dc-nav">
+      <a href="/" class="active">Home</a>
+      <a href="/dashboard">The Eye</a>
+      <a href="/simulator">The Oracle</a>
+      <a href="/analytics">Analytics</a>
+    </nav>
+    <div class="dc-topbar-spacer"></div>
+    <div class="dc-clock">
+      <span class="dc-clock__date" id="topbar-date"></span>
+      <span id="topbar-clock"></span>
+    </div>
+  </header>
+
+  <!-- Hero -->
+  <main class="dc-hero">
+
+    <p class="dc-hero__eyebrow">IBM WatsonX · Swarm AI · Real-Time Intelligence</p>
+
+    <h1>DevCity <span>Pulse</span></h1>
+
+    <p class="tagline">
+      A mission-control platform for urban situational awareness.<br/>
+      Monitor 8 city districts, run 1,000-agent simulations, predict crowd dynamics.
+    </p>
+
+    <div class="dc-hero-actions">
+      <a href="/dashboard" class="btn btn--primary btn--lg">→ Open The Eye</a>
+      <a href="/simulator" class="btn btn--ghost btn--lg">→ Run The Oracle</a>
+    </div>
+
+    <!-- Stats -->
+    <div class="dc-hero-stats">
+      <div class="hero-stat">
+        <span class="hero-stat__num">8</span>
+        <span class="hero-stat__label">City Districts</span>
+      </div>
+      <div class="hero-stat">
+        <span class="hero-stat__num">30s</span>
+        <span class="hero-stat__label">Update Cycle</span>
+      </div>
+      <div class="hero-stat">
+        <span class="hero-stat__num">1,000</span>
+        <span class="hero-stat__label">Swarm Agents</span>
+      </div>
+      <div class="hero-stat">
+        <span class="hero-stat__num" style="background:linear-gradient(135deg,#0F62FE,#00D4FF);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">WatsonX</span>
+        <span class="hero-stat__label">AI Engine</span>
+      </div>
+      <div class="hero-stat">
+        <span class="hero-stat__num">7</span>
+        <span class="hero-stat__label">Archetypes</span>
+      </div>
+    </div>
+
+    <!-- Feature cards -->
+    <div class="dc-hero-features">
+      <div class="feature-card">
+        <span class="feature-card__icon">🗺</span>
+        <div class="feature-card__title">The Eye — Live Map</div>
+        <div class="feature-card__desc">Real-time Leaflet map with crowd density, sentiment, and safety risk overlays across all districts. WebSocket push every 30s.</div>
+      </div>
+      <div class="feature-card">
+        <span class="feature-card__icon">🔮</span>
+        <div class="feature-card__title">The Oracle — Simulations</div>
+        <div class="feature-card__desc">Deploy 1,000 virtual demographic agents to predict how any news event or policy shock propagates through city populations.</div>
+      </div>
+      <div class="feature-card">
+        <span class="feature-card__icon">📊</span>
+        <div class="feature-card__title">Signal Analytics</div>
+        <div class="feature-card__desc">Historical trend charts, KPI dashboards, and risk distribution analysis across time windows from 1 hour to 7 days.</div>
+      </div>
+      <div class="feature-card">
+        <span class="feature-card__icon">⚡</span>
+        <div class="feature-card__title">IBM WatsonX AI</div>
+        <div class="feature-card__desc">Granite 13B chat model scores every district on crowd density, sentiment, and safety risk from live Reddit and RSS signals.</div>
+      </div>
+    </div>
+
+    <footer class="dc-hero-footer">
+      IBM SkillBuild Lab &nbsp;·&nbsp; WatsonX AI &nbsp;·&nbsp; April 2026
+    </footer>
+
+  </main>
+
+  <script>
+    const cl = document.getElementById('topbar-clock');
+    const dt = document.getElementById('topbar-date');
+    function tick() {
+      const now = new Date();
+      if (cl) cl.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      if (dt) dt.textContent = now.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    }
+    tick(); setInterval(tick, 1000);
+  </script>
+</body>
+</html>

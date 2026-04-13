@@ -1,0 +1,15 @@
+{
+  "scenario_id": "policy_announcement",
+  "title": "Mayor announces new congestion pricing",
+  "description": "City introduces $15/day charge for driving in central zone",
+  "sector": "government",
+  "default_zone": "nyc-manhattan",
+  "news_item": "Mayor announces new $15 daily congestion pricing charge for all vehicles entering Manhattan below 60th Street, effective next month.",
+  "external_factors": [
+    {
+      "type": "viral_controversy",
+      "content": "Leaked memo suggests exemptions for wealthy neighbourhoods",
+      "inject_at_minute": 30
+    }
+  ]
+}

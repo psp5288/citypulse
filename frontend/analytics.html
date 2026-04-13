@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Analytics — DevCity Pulse</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/main.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <div class="dc-shell">
+    <header class="dc-topbar">
+      <div class="dc-brand">
+        <div class="dc-brand__icon">CP</div>
+        <div>
+          <div class="dc-brand__text">DevCity Pulse</div>
+          <div class="dc-brand__sub">Urban Intelligence</div>
+        </div>
+      </div>
+      <nav class="dc-nav">
+        <a href="/">Home</a>
+        <a href="/dashboard">The Eye</a>
+        <a href="/simulator">The Oracle</a>
+        <a href="/analytics" class="active">Analytics</a>
+      </nav>
+      <div class="dc-topbar-spacer"></div>
+      <div class="dc-clock">
+        <span class="dc-clock__date" id="topbar-date"></span>
+        <span id="topbar-clock"></span>
+      </div>
+    </header>
+
+    <div class="analytics-body">
+      <div class="analytics-header">
+        <div>
+          <h2 class="analytics-title">City Intelligence Analytics</h2>
+          <p class="analytics-sub">Trend telemetry and district risk distribution</p>
+        </div>
+        <div class="analytics-controls">
+          <label class="form-label" for="range-select" style="margin-bottom:0">Range</label>
+          <select class="form-select" id="range-select" style="width:130px">
+            <option value="1h">1h</option>
+            <option value="6h">6h</option>
+            <option value="24h">24h</option>
+            <option value="7d">7d</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="kpi-grid">
+        <div class="kpi-card"><div class="kpi-card__label">Peak Crowd Density</div><div class="kpi-card__value" id="kpi-density">—</div></div>
+        <div class="kpi-card"><div class="kpi-card__label">Inference Latency</div><div class="kpi-card__value" id="kpi-latency">—</div></div>
+        <div class="kpi-card"><div class="kpi-card__label">Active Events</div><div class="kpi-card__value" id="kpi-events">—</div></div>
+        <div class="kpi-card"><div class="kpi-card__label">Cache Hit Rate</div><div class="kpi-card__value" id="kpi-cache">—</div></div>
+      </div>
+
+      <div class="chart-grid">
+        <div class="chart-card">
+          <div class="chart-card__header">
+            <span class="chart-card__title">Signal Trends</span>
+          </div>
+          <div class="chart-card__body"><canvas id="trend-chart"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-card__header">
+            <span class="chart-card__title">Risk Distribution</span>
+          </div>
+          <div class="chart-card__body"><canvas id="risk-chart"></canvas></div>
+        </div>
+      </div>
+
+      <div class="analytics-table-section">
+        <div class="sim-history__header">
+          <span class="sim-history__title">District Snapshot</span>
+        </div>
+        <div class="sim-history__table-wrap">
+          <table class="sim-table">
+            <thead>
+              <tr>
+                <th>District</th>
+                <th>Crowd</th>
+                <th>Sentiment</th>
+                <th>Risk</th>
+                <th>Events</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="district-snapshot-body">
+              <tr><td colspan="6" style="text-align:center;color:var(--text-muted)">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/analytics.js"></script>
+</body>
+</html>
