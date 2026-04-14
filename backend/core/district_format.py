@@ -17,6 +17,8 @@ def format_one(score: dict) -> dict:
         "events": int(score.get("events_count", 0)),
         "updated_at": score.get("updated_at"),
         "summary": score.get("summary", ""),
+        "lat": meta.get("lat"),
+        "lon": meta.get("lon"),
         "x": pos["x"],
         "y": pos["y"],
         "r": pos["r"],

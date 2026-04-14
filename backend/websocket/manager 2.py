@@ -1,6 +1,11 @@
 import asyncio
 import json
+import logging
+from typing import Optional
+
 from fastapi import WebSocket
+
+logger = logging.getLogger(__name__)
 
 
 class ConnectionManager:
@@ -20,21 +25,19 @@ class ConnectionManager:
             self._connections.remove(ws)
 
     async def broadcast(self, data: dict):
+        await self.broadcast_json(data)
+
+    async def broadcast_json(self, data: dict):
         if not self._connections:
             return
-        message = json.dumps(data)
         dead = []
         for ws in self._connections:
             try:
-                await asyncio.wait_for(ws.send_text(message), timeout=5.0)
+                await asyncio.wait_for(ws.send_json(data), timeout=5.0)
             except Exception:
                 dead.append(ws)
         for ws in dead:
             self.disconnect(ws)
-
-    async def broadcast_json(self, data: dict):
-        """Compatibility wrapper for callers expecting broadcast_json."""
-        await self.broadcast(data)
 
 
 manager = ConnectionManager()

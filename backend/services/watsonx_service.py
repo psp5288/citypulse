@@ -198,13 +198,31 @@ Return ONLY this JSON with no other text:
         return _mock_zone_score(zone_id)
 
 
-async def agent_react(agent_profile: dict, news_item: str, rumour: str = None) -> dict:
-    """Run a single swarm agent reaction through WatsonX."""
+async def agent_react(
+    agent_profile: dict,
+    news_item: str,
+    rumour: str = None,
+    social_context: list[str] | None = None,
+) -> dict:
+    """Run a single swarm agent reaction through WatsonX.
+
+    social_context: list of short strings summarising what influential agents in
+    the previous cascade round said. Used for Round 2 (passive/skeptic) and
+    Round 3 (institutional) to simulate information cascading.
+    """
     rumour_line = f"\nYou have also heard this rumour: {rumour}" if rumour else ""
+    context_block = ""
+    if social_context:
+        sample = social_context[:8]   # cap to keep prompt short
+        context_block = (
+            "\n\nYou have also seen these reactions from others in your network:\n"
+            + "\n".join(f"- {s}" for s in sample)
+        )
+
     prompt = f"""You are a {agent_profile['archetype']} person living in {agent_profile['zone']}.
 Your political lean is {agent_profile['political_lean']} (scale: -1=far left, 1=far right).
 Your trust in media is {agent_profile['media_trust']} (scale: 0=none, 1=full).
-You have just read this news: {news_item}{rumour_line}
+You have just read this news: {news_item}{rumour_line}{context_block}
 
 How do you react? Return ONLY this JSON with no other text:
 {{
@@ -217,7 +235,7 @@ How do you react? Return ONLY this JSON with no other text:
     try:
         model = _get_model()
         if not model:
-            return _mock_agent_react(agent_profile)
+            return _mock_agent_react(agent_profile, social_context=social_context)
 
         loop = asyncio.get_event_loop()
         response = await loop.run_in_executor(None, lambda: model.generate_text(prompt))
@@ -225,10 +243,12 @@ How do you react? Return ONLY this JSON with no other text:
         result = json.loads(clean)
         result["agent_id"] = agent_profile["agent_id"]
         result["archetype"] = agent_profile["archetype"]
+        result["network_size"] = agent_profile.get("network_size", 50)
+        result["reaction_delay_minutes"] = agent_profile.get("reaction_delay_minutes", 60)
         return result
     except Exception as e:
         logger.warning(f"Agent {agent_profile['agent_id']} WatsonX call failed: {e}")
-        return _mock_agent_react(agent_profile)
+        return _mock_agent_react(agent_profile, social_context=social_context)
 
 
 async def health_check() -> bool:
@@ -285,7 +305,7 @@ def _mock_zone_score(zone_id: str) -> dict:
     }
 
 
-def _mock_agent_react(agent_profile: dict) -> dict:
+def _mock_agent_react(agent_profile: dict, social_context: list[str] | None = None) -> dict:
     archetype = agent_profile.get("archetype", "passive_consumer")
     sentiments = {
         "emotional_reactor": ["negative", "positive"],
@@ -306,11 +326,27 @@ def _mock_agent_react(agent_profile: dict) -> dict:
         "institutional": "ignore",
     }
     sentiment = random.choice(sentiments.get(archetype, ["neutral"]))
+
+    # Social context nudges passive/skeptic toward prevailing sentiment in Round 2
+    if social_context and archetype in ("passive_consumer", "skeptic", "institutional"):
+        neg_count = sum(1 for s in social_context if "negative" in s.lower())
+        pos_count = sum(1 for s in social_context if "positive" in s.lower())
+        if neg_count > pos_count * 1.5:
+            sentiment = random.choices(["negative", "neutral"], weights=[0.65, 0.35])[0]
+        elif pos_count > neg_count * 1.5:
+            sentiment = random.choices(["positive", "neutral"], weights=[0.65, 0.35])[0]
+
+    reasoning = f"{archetype} processed the news through their typical lens."
+    if social_context:
+        reasoning = f"{archetype} considered the news alongside {len(social_context)} peer reactions."
+
     return {
         "agent_id": agent_profile["agent_id"],
         "archetype": archetype,
         "sentiment": sentiment,
         "action": actions.get(archetype, "ignore"),
         "intensity": round(random.uniform(0.2, 0.9), 2),
-        "reasoning": f"{archetype} processed the news through their typical lens.",
+        "reasoning": reasoning,
+        "network_size": agent_profile.get("network_size", 50),
+        "reaction_delay_minutes": agent_profile.get("reaction_delay_minutes", 60),
     }

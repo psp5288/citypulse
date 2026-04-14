@@ -1,16 +1,15 @@
 from typing import Optional
-
 import asyncpg
-import logging
-
 from backend.config import settings
+import logging
 
 logger = logging.getLogger(__name__)
 
 _pool: Optional[asyncpg.Pool] = None
 
 SCHEMA_SQL = """
--- Legacy zone / simulation (optional)
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 CREATE TABLE IF NOT EXISTS zone_snapshots (
     id              SERIAL PRIMARY KEY,
     zone_id         VARCHAR(64) NOT NULL,
@@ -24,6 +23,8 @@ CREATE TABLE IF NOT EXISTS zone_snapshots (
     post_count      INT DEFAULT 0,
     scored_at       TIMESTAMPTZ DEFAULT NOW()
 );
+CREATE INDEX IF NOT EXISTS idx_zone_snapshots_zone_id ON zone_snapshots(zone_id);
+CREATE INDEX IF NOT EXISTS idx_zone_snapshots_scored_at ON zone_snapshots(scored_at DESC);
 
 CREATE TABLE IF NOT EXISTS simulations (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -37,46 +38,6 @@ CREATE TABLE IF NOT EXISTS simulations (
     completed_at    TIMESTAMPTZ
 );
 
--- City Pulse: district history
-CREATE TABLE IF NOT EXISTS district_snapshots (
-    id              SERIAL PRIMARY KEY,
-    district_id     VARCHAR(64) NOT NULL,
-    crowd           FLOAT,
-    sentiment       FLOAT,
-    risk            FLOAT,
-    events_count    INT DEFAULT 0,
-    source_data     JSONB,
-    created_at      TIMESTAMPTZ DEFAULT NOW()
-);
-CREATE INDEX IF NOT EXISTS idx_district_snapshots_district ON district_snapshots(district_id);
-CREATE INDEX IF NOT EXISTS idx_district_snapshots_created ON district_snapshots(created_at DESC);
-
--- Feed / event log
-CREATE TABLE IF NOT EXISTS stream_events (
-    id              SERIAL PRIMARY KEY,
-    type            VARCHAR(32),
-    district_id     VARCHAR(64),
-    message         TEXT,
-    metadata        JSONB,
-    created_at      TIMESTAMPTZ DEFAULT NOW()
-);
-CREATE INDEX IF NOT EXISTS idx_stream_events_created ON stream_events(created_at DESC);
-
--- Alerts (City Pulse schema)
-CREATE TABLE IF NOT EXISTS citypulse_alerts (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    severity        VARCHAR(16) NOT NULL,
-    title           TEXT NOT NULL,
-    description     TEXT,
-    district_id     VARCHAR(64),
-    status          VARCHAR(16) DEFAULT 'open',
-    created_at      TIMESTAMPTZ DEFAULT NOW(),
-    resolved_at     TIMESTAMPTZ
-);
-CREATE INDEX IF NOT EXISTS idx_citypulse_alerts_status ON citypulse_alerts(status);
-CREATE INDEX IF NOT EXISTS idx_citypulse_alerts_district ON citypulse_alerts(district_id);
-
--- Legacy alerts table (older routers)
 CREATE TABLE IF NOT EXISTS alerts (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     zone_id         VARCHAR(64),
@@ -89,15 +50,90 @@ CREATE TABLE IF NOT EXISTS alerts (
     triggered_at    TIMESTAMPTZ DEFAULT NOW(),
     acknowledged    BOOLEAN DEFAULT FALSE
 );
+ALTER TABLE alerts ADD COLUMN IF NOT EXISTS zone_id VARCHAR(64);
+ALTER TABLE alerts ADD COLUMN IF NOT EXISTS zone_name VARCHAR(128);
+ALTER TABLE alerts ADD COLUMN IF NOT EXISTS alert_type VARCHAR(64);
+ALTER TABLE alerts ADD COLUMN IF NOT EXISTS message TEXT;
+ALTER TABLE alerts ADD COLUMN IF NOT EXISTS severity VARCHAR(16);
+ALTER TABLE alerts ADD COLUMN IF NOT EXISTS value FLOAT;
+ALTER TABLE alerts ADD COLUMN IF NOT EXISTS threshold_val FLOAT;
+ALTER TABLE alerts ADD COLUMN IF NOT EXISTS triggered_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE alerts ADD COLUMN IF NOT EXISTS acknowledged BOOLEAN DEFAULT FALSE;
+CREATE INDEX IF NOT EXISTS idx_alerts_zone_id ON alerts(zone_id);
+CREATE INDEX IF NOT EXISTS idx_alerts_triggered_at ON alerts(triggered_at DESC);
 
--- Users (JWT auth)
+CREATE TABLE IF NOT EXISTS district_snapshots (
+    id              BIGSERIAL PRIMARY KEY,
+    district_id     VARCHAR(64) NOT NULL,
+    crowd           FLOAT,
+    sentiment       FLOAT,
+    risk            FLOAT,
+    events_count    INT DEFAULT 0,
+    source_data     JSONB DEFAULT '{}'::jsonb,
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_district_snapshots_district_id ON district_snapshots(district_id);
+CREATE INDEX IF NOT EXISTS idx_district_snapshots_created_at ON district_snapshots(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS citypulse_alerts (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    severity        VARCHAR(16) NOT NULL,
+    title           TEXT NOT NULL,
+    description     TEXT,
+    district_id     VARCHAR(64),
+    status          VARCHAR(32) DEFAULT 'open',
+    created_at      TIMESTAMPTZ DEFAULT NOW(),
+    resolved_at     TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_citypulse_alerts_created_at ON citypulse_alerts(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS stream_events (
+    id              BIGSERIAL PRIMARY KEY,
+    type            VARCHAR(64) NOT NULL,
+    district_id     VARCHAR(64),
+    message         TEXT NOT NULL,
+    metadata        JSONB DEFAULT '{}'::jsonb,
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_stream_events_created_at ON stream_events(created_at DESC);
+
 CREATE TABLE IF NOT EXISTS users (
-    id              SERIAL PRIMARY KEY,
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email           VARCHAR(255) UNIQUE NOT NULL,
     password_hash   TEXT NOT NULL,
     role            VARCHAR(32) DEFAULT 'user',
     created_at      TIMESTAMPTZ DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS iris_events (
+    id              BIGSERIAL PRIMARY KEY,
+    source          VARCHAR(64) NOT NULL,
+    location        VARCHAR(128) NOT NULL,
+    topic           VARCHAR(128) NOT NULL,
+    sentiment       FLOAT NOT NULL,
+    engagement      FLOAT NOT NULL,
+    confidence      FLOAT NOT NULL,
+    payload         JSONB DEFAULT '{}'::jsonb,
+    occurred_at     TIMESTAMPTZ NOT NULL,
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_iris_events_loc_topic_time ON iris_events(location, topic, occurred_at DESC);
+
+CREATE TABLE IF NOT EXISTS iris_state_cache (
+    key             VARCHAR(255) PRIMARY KEY,
+    state_json      JSONB NOT NULL,
+    updated_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS oracle_forecasts (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    location        VARCHAR(128) NOT NULL,
+    topic           VARCHAR(128) NOT NULL,
+    scenario_text   TEXT NOT NULL,
+    result_json     JSONB NOT NULL,
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_oracle_forecasts_loc_topic_created_at ON oracle_forecasts(location, topic, created_at DESC);
 """
 
 
@@ -106,66 +142,6 @@ async def init_db():
     _pool = await asyncpg.create_pool(settings.database_url, min_size=2, max_size=10)
     async with _pool.acquire() as conn:
         await conn.execute(SCHEMA_SQL)
-        # Backward-compatible additive migration for older local schemas.
-        await conn.execute("ALTER TABLE district_snapshots ADD COLUMN IF NOT EXISTS crowd FLOAT")
-        await conn.execute("ALTER TABLE district_snapshots ADD COLUMN IF NOT EXISTS sentiment FLOAT")
-        await conn.execute("ALTER TABLE district_snapshots ADD COLUMN IF NOT EXISTS risk FLOAT")
-        await conn.execute("ALTER TABLE district_snapshots ADD COLUMN IF NOT EXISTS events_count INT DEFAULT 0")
-        await conn.execute("ALTER TABLE district_snapshots ADD COLUMN IF NOT EXISTS source_data JSONB")
-        # Some older local schemas used legacy columns with NOT NULL constraints.
-        # Keep compatibility by relaxing those constraints if columns exist.
-        await conn.execute(
-            """
-            DO $$
-            BEGIN
-              IF EXISTS (
-                SELECT 1 FROM information_schema.columns
-                WHERE table_schema='public' AND table_name='district_snapshots' AND column_name='crowd_density'
-              ) THEN
-                ALTER TABLE district_snapshots ALTER COLUMN crowd_density DROP NOT NULL;
-              END IF;
-              IF EXISTS (
-                SELECT 1 FROM information_schema.columns
-                WHERE table_schema='public' AND table_name='district_snapshots' AND column_name='sentiment_score'
-              ) THEN
-                ALTER TABLE district_snapshots ALTER COLUMN sentiment_score DROP NOT NULL;
-              END IF;
-              IF EXISTS (
-                SELECT 1 FROM information_schema.columns
-                WHERE table_schema='public' AND table_name='district_snapshots' AND column_name='safety_risk'
-              ) THEN
-                ALTER TABLE district_snapshots ALTER COLUMN safety_risk DROP NOT NULL;
-              END IF;
-              IF EXISTS (
-                SELECT 1 FROM information_schema.columns
-                WHERE table_schema='public' AND table_name='district_snapshots' AND column_name='reactivity'
-              ) THEN
-                ALTER TABLE district_snapshots ALTER COLUMN reactivity DROP NOT NULL;
-              END IF;
-            END$$;
-            """
-        )
-
-        # Fail fast if required columns are still missing.
-        missing = await conn.fetch(
-            """
-            SELECT required.col
-            FROM (
-              VALUES ('district_id'), ('crowd'), ('sentiment'), ('risk'),
-                     ('events_count'), ('source_data'), ('created_at')
-            ) AS required(col)
-            LEFT JOIN information_schema.columns c
-              ON c.table_schema = 'public'
-             AND c.table_name = 'district_snapshots'
-             AND c.column_name = required.col
-            WHERE c.column_name IS NULL
-            """
-        )
-        if missing:
-            missing_cols = ", ".join(r["col"] for r in missing)
-            raise RuntimeError(
-                f"database schema incompatible: district_snapshots missing columns [{missing_cols}]"
-            )
     logger.info("PostgreSQL connected and schema initialized")
 
 

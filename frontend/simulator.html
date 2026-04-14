@@ -8,8 +8,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;600;700&display=swap" rel="stylesheet" />
 
-  <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
 
   <link rel="stylesheet" href="/css/main.css" />
 </head>
@@ -17,7 +17,6 @@
 
   <div class="dc-shell">
 
-    <!-- Top bar -->
     <header class="dc-topbar">
       <div class="dc-brand">
         <div class="dc-brand__icon">CP</div>
@@ -28,7 +27,7 @@
       </div>
       <nav class="dc-nav">
         <a href="/">Home</a>
-        <a href="/dashboard">The Eye</a>
+        <a href="/dashboard">Iris</a>
         <a href="/simulator" class="active">The Oracle</a>
         <a href="/analytics">Analytics</a>
       </nav>
@@ -39,144 +38,201 @@
       </div>
     </header>
 
-    <!-- Page header -->
+    <!-- Page header row -->
     <div class="sim-page-header">
       <div>
         <h2 class="sim-page-title">The Oracle <span class="sim-page-sub">— Swarm AI Simulation</span></h2>
         <p class="sim-page-desc">Deploy 1,000 virtual agents across demographic archetypes · Powered by IBM WatsonX Granite 13B</p>
       </div>
       <div class="sim-scenario-btns">
-        <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.1em">Quick scenarios →</span>
+        <span class="sim-scenario-label">Quick scenarios →</span>
         <button class="btn btn--ghost btn--sm" id="btn-sc-banking">🏦 Banking Crisis</button>
         <button class="btn btn--ghost btn--sm" id="btn-sc-policy">🏛 Policy Shock</button>
         <button class="btn btn--ghost btn--sm" id="btn-sc-news">📡 News Breakout</button>
       </div>
     </div>
 
-    <!-- 2-column sim layout -->
-    <div class="sim-layout">
+    <!-- 3-column layout -->
+    <div class="sim-layout sim-layout--3col">
 
-      <!-- Left: form -->
-      <section class="sim-panel" aria-label="Simulation parameters">
+      <!-- ── COL 1: Configuration form ──────────────────────────────────── -->
+      <section class="sim-panel sim-panel--form" aria-label="Simulation parameters">
 
-        <form id="sim-form" autocomplete="off">
-
-          <div class="form-group">
-            <label class="form-label" for="field-zone">Target District</label>
-            <select class="form-select" id="field-zone">
-              <option value="downtown">Downtown Core</option>
-            </select>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label" for="field-news">News Event / Scenario</label>
-            <textarea class="form-textarea" id="field-news" rows="4"
-              placeholder="Describe the news event or policy announcement to simulate…" required></textarea>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Sector Context</label>
-            <div class="sector-grid">
-              <button type="button" class="sector-btn active" data-sector="general">General</button>
-              <button type="button" class="sector-btn" data-sector="banking">Banking</button>
-              <button type="button" class="sector-btn" data-sector="government">Government</button>
-              <button type="button" class="sector-btn" data-sector="crisis">Crisis</button>
-              <button type="button" class="sector-btn" data-sector="transport">Transport</button>
-              <button type="button" class="sector-btn" data-sector="health">Health</button>
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">
-              Agent Count: <span id="agents-val" style="color:var(--cyan);font-weight:500">1000</span>
-            </label>
-            <input type="range" class="form-range" id="field-agents" min="50" max="1000" step="50" value="1000" />
-            <div style="display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:8px;color:var(--text-muted);margin-top:3px">
-              <span>50 agents</span><span>1,000 agents</span>
-            </div>
-          </div>
-
-          <!-- External factors -->
-          <div class="collapsible">
-            <div class="collapsible-header">
-              <span>External Factors (Inject mid-simulation)</span>
-              <span class="collapsible-arrow">▼</span>
-            </div>
-            <div class="collapsible-body">
-              <div id="external-factors"></div>
-              <button type="button" class="btn btn--ghost btn--sm" id="btn-add-factor" style="margin-top:8px">+ Add Factor</button>
-            </div>
-          </div>
-
-          <div style="margin-top:var(--gap-lg)">
-            <button type="submit" class="btn-run" id="run-btn">→ Run Simulation</button>
-            <div id="run-progress" class="progress-bar" style="display:none">
-              <div class="progress-fill"></div>
-            </div>
-          </div>
-
-        </form>
-
-        <!-- Archetype legend -->
-        <div class="archetype-legend">
-          <div class="form-label" style="margin-bottom:8px">Agent Archetypes Deployed</div>
-          <div class="archetype-row"><span class="archetype-dot" style="background:#0F62FE"></span><span>Passive Consumer</span><span class="archetype-pct">31%</span></div>
-          <div class="archetype-row"><span class="archetype-dot" style="background:#8A3FFC"></span><span>Skeptic</span><span class="archetype-pct">18%</span></div>
-          <div class="archetype-row"><span class="archetype-dot" style="background:#DA1E28"></span><span>Emotional Reactor</span><span class="archetype-pct">15%</span></div>
-          <div class="archetype-row"><span class="archetype-dot" style="background:#00D4FF"></span><span>Early Adopter</span><span class="archetype-pct">12%</span></div>
-          <div class="archetype-row"><span class="archetype-dot" style="background:#F0A500"></span><span>Amplifier</span><span class="archetype-pct">9%</span></div>
-          <div class="archetype-row"><span class="archetype-dot" style="background:#9F1853"></span><span>Contrarian</span><span class="archetype-pct">8%</span></div>
-          <div class="archetype-row"><span class="archetype-dot" style="background:#24A148"></span><span>Institutional</span><span class="archetype-pct">7%</span></div>
+        <div class="sim-panel__head">
+          <span class="sim-panel__head-title">Configuration</span>
         </div>
+
+        <div class="sim-panel__body">
+          <form id="sim-form" autocomplete="off">
+
+            <div class="form-group">
+              <label class="form-label" for="field-zone">Target District</label>
+              <select class="form-select" id="field-zone">
+                <option value="downtown">Downtown Core</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Global Target Search</label>
+              <div class="target-search-row">
+                <div style="flex:1;position:relative">
+                  <input id="field-target-search" class="form-input target-search-input"
+                    placeholder="City, country, region…" autocomplete="off" />
+                  <div id="field-target-suggest" class="target-suggest-drop" style="display:none"></div>
+                </div>
+                <button type="button" class="btn btn--ghost btn--sm" id="btn-target-search">Find</button>
+              </div>
+              <div id="field-target-picked" class="target-picked-hint">Tip: search any place or keep district presets.</div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="field-news">News Event / Scenario</label>
+              <textarea class="form-textarea" id="field-news" rows="4"
+                placeholder="Describe the news event or policy announcement to simulate…" required></textarea>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Sector Context</label>
+              <div class="sector-grid">
+                <button type="button" class="sector-btn active" data-sector="general">General</button>
+                <button type="button" class="sector-btn" data-sector="banking">Banking</button>
+                <button type="button" class="sector-btn" data-sector="government">Government</button>
+                <button type="button" class="sector-btn" data-sector="crisis">Crisis</button>
+                <button type="button" class="sector-btn" data-sector="transport">Transport</button>
+                <button type="button" class="sector-btn" data-sector="health">Health</button>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">
+                Agent Count: <span id="agents-val" style="color:var(--cyan);font-weight:600">1000</span>
+              </label>
+              <input type="range" class="form-range" id="field-agents"
+                min="50" max="1000" step="50" value="1000" />
+              <div class="range-bounds">
+                <span>50</span><span>1,000</span>
+              </div>
+            </div>
+
+            <!-- External factors -->
+            <div class="collapsible">
+              <div class="collapsible-header">
+                <span>External Factors</span>
+                <span class="collapsible-arrow">▼</span>
+              </div>
+              <div class="collapsible-body">
+                <div id="external-factors"></div>
+                <button type="button" class="btn btn--ghost btn--sm" id="btn-add-factor"
+                  style="margin-top:8px;width:100%">+ Add Factor</button>
+              </div>
+            </div>
+
+            <div class="form-actions">
+              <button type="submit" class="btn-run" id="run-btn">→ Run Simulation</button>
+              <div id="run-progress" class="progress-bar" style="display:none">
+                <div class="progress-fill"></div>
+              </div>
+            </div>
+
+          </form>
+
+          <!-- Archetype legend -->
+          <div class="archetype-legend">
+            <div class="form-label" style="margin-bottom:8px;margin-top:4px">Agent Archetypes</div>
+            <div class="archetype-row"><span class="archetype-dot" style="background:#6A9DC4"></span><span>Passive Consumer</span><span class="archetype-pct">31%</span></div>
+            <div class="archetype-row"><span class="archetype-dot" style="background:#8A6AC4"></span><span>Skeptic</span><span class="archetype-pct">18%</span></div>
+            <div class="archetype-row"><span class="archetype-dot" style="background:#C47070"></span><span>Emotional Reactor</span><span class="archetype-pct">15%</span></div>
+            <div class="archetype-row"><span class="archetype-dot" style="background:#70B8C4"></span><span>Early Adopter</span><span class="archetype-pct">12%</span></div>
+            <div class="archetype-row"><span class="archetype-dot" style="background:#C4A840"></span><span>Amplifier</span><span class="archetype-pct">9%</span></div>
+            <div class="archetype-row"><span class="archetype-dot" style="background:#C4708A"></span><span>Contrarian</span><span class="archetype-pct">8%</span></div>
+            <div class="archetype-row"><span class="archetype-dot" style="background:#5DAF78"></span><span>Institutional</span><span class="archetype-pct">7%</span></div>
+          </div>
+        </div><!-- /.sim-panel__body -->
 
       </section>
 
-      <!-- Right: results -->
-      <section class="sim-panel sim-panel--results" aria-label="Simulation results">
-        <div class="sim-results-header">
-          <span class="sim-results-title">Prediction Output</span>
-          <span style="font-family:var(--font-mono);font-size:8px;color:var(--text-muted)" id="sim-status-badge"></span>
+      <!-- ── COL 2: Agent web graph ──────────────────────────────────────── -->
+      <section class="sim-panel sim-panel--graph" aria-label="Agent network">
+
+        <div class="sim-panel__head">
+          <div class="sim-graph-head-left">
+            <span class="sim-panel__head-title">Agent Network</span>
+            <span class="sim-graph-status" id="graph-status">Idle · awaiting simulation</span>
+          </div>
+          <div class="sim-graph-head-right" id="graph-cascade-info" style="display:none">
+            <span class="graph-cascade-badge" id="graph-cascade-badge">R1</span>
+            <span class="graph-cascade-label">cascade</span>
+          </div>
         </div>
-        <div id="results-panel" class="results-panel"></div>
+
+        <!-- D3 SVG mount point -->
+        <div id="agent-graph-wrap" class="agent-graph-wrap">
+          <!-- D3 injects SVG here -->
+
+          <!-- Node detail overlay (shown on node click) -->
+          <div id="graph-node-detail" class="graph-node-detail" style="display:none"></div>
+        </div>
+
+        <!-- Archetype colour key -->
+        <div class="sim-graph-legend" id="graph-legend"></div>
+
+      </section>
+
+      <!-- ── COL 3: Prediction output + history ─────────────────────────── -->
+      <section class="sim-panel sim-panel--results" aria-label="Simulation results">
+
+        <div class="sim-panel__head">
+          <span class="sim-panel__head-title">Prediction Output</span>
+          <span class="sim-status-badge" id="sim-status-badge"></span>
+        </div>
+
+        <div class="sim-panel__body">
+
+          <div id="results-panel" class="results-panel"></div>
+
+          <!-- History table (inline in right col) -->
+          <div class="sim-history-inline">
+            <div class="sim-history-inline__head">
+              <span class="sim-history__title">Test Histories</span>
+              <span id="history-count" class="sim-history-inline__count"></span>
+            </div>
+            <div class="sim-history__table-wrap">
+              <table class="sim-table">
+                <thead>
+                  <tr>
+                    <th>Sim ID</th>
+                    <th>District</th>
+                    <th>Event</th>
+                    <th>Neg.</th>
+                    <th>Virality</th>
+                    <th>Accuracy</th>
+                  </tr>
+                </thead>
+                <tbody id="history-body">
+                  <tr><td colspan="6" style="color:var(--text-muted);text-align:center;padding:20px">No simulations yet</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div><!-- /.sim-panel__body -->
+
       </section>
 
     </div><!-- /.sim-layout -->
 
-    <!-- History table -->
-    <section class="sim-history" aria-label="Simulation history">
-      <div class="sim-history__header">
-        <span class="sim-history__title">Recent Simulations</span>
-      </div>
-      <div class="sim-history__table-wrap">
-        <table class="sim-table">
-          <thead>
-            <tr>
-              <th>Sim ID</th>
-              <th>District</th>
-              <th>Event Snapshot</th>
-              <th>Neg. Sentiment</th>
-              <th>Virality</th>
-              <th>Accuracy vs Real</th>
-            </tr>
-          </thead>
-          <tbody id="history-body">
-            <tr><td colspan="6" style="color:var(--text-muted);text-align:center;padding:16px">No simulations yet</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-
   </div><!-- /.dc-shell -->
 
   <script src="/js/api.js"></script>
+  <script src="/js/place-search.js"></script>
   <script src="/js/simulator.js"></script>
   <script>
     const cl = document.getElementById('topbar-clock');
     const dt = document.getElementById('topbar-date');
     function tick() {
       const now = new Date();
-      if (cl) cl.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-      if (dt) dt.textContent = now.toLocaleDateString([], { month: 'short', day: 'numeric' });
+      if (cl) cl.textContent = now.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+      if (dt) dt.textContent = now.toLocaleDateString([], { month:'short', day:'numeric' });
     }
     tick(); setInterval(tick, 1000);
   </script>

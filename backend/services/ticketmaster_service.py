@@ -7,7 +7,7 @@ BASE = "https://app.ticketmaster.com/discovery/v2/events.json"
 
 
 async def fetch_events(lat: float, lon: float, radius_km: float = 2) -> list[dict]:
-    if not settings.TICKETMASTER_API_KEY:
+    if not settings.ticketmaster_api_key:
         return _mock_events()
 
     now = datetime.now(timezone.utc)
@@ -16,7 +16,7 @@ async def fetch_events(lat: float, lon: float, radius_km: float = 2) -> list[dic
     try:
         async with httpx.AsyncClient() as client:
             r = await client.get(BASE, params={
-                "apikey": settings.TICKETMASTER_API_KEY,
+                "apikey": settings.ticketmaster_api_key,
                 "latlong": f"{lat},{lon}",
                 "radius": max(1, int(radius_km)),
                 "unit": "km",

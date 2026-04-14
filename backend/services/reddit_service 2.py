@@ -13,7 +13,7 @@ async def _get_token() -> str:
     if _token_cache["token"] and time.time() < _token_cache["expires_at"] - 60:
         return _token_cache["token"]
 
-    if not settings.reddit_client_id or not settings.reddit_client_secret:
+    if not settings.REDDIT_CLIENT_ID or not settings.REDDIT_CLIENT_SECRET:
         return ""
 
     try:
@@ -21,7 +21,7 @@ async def _get_token() -> str:
             r = await client.post(
                 AUTH_URL,
                 data={"grant_type": "client_credentials"},
-                auth=(settings.reddit_client_id, settings.reddit_client_secret),
+                auth=(settings.REDDIT_CLIENT_ID, settings.REDDIT_CLIENT_SECRET),
                 headers={"User-Agent": "CityPulse/1.0"},
                 timeout=10,
             )
@@ -61,53 +61,6 @@ async def fetch_posts(subreddits: list[str], keywords: list[str], limit: int = 2
         return _mock_posts(keywords)
 
     return posts[:25] if posts else _mock_posts(keywords)
-
-
-async def fetch_posts_for_location(location_name: str, max_posts: int = 25) -> list[dict]:
-    """
-    Search Reddit for posts mentioning location_name.
-    Uses r/news + r/worldnews as fallback subreddits.
-    Returns list of {"title": str, "text": str, "score": int, "url": str}
-    """
-    token = await _get_token()
-    posts: list[dict] = []
-
-    if not token:
-        return _mock_posts_structured(location_name)
-
-    subreddits = ["news", "worldnews"]
-    try:
-        async with httpx.AsyncClient() as client:
-            for sub in subreddits:
-                r = await client.get(
-                    f"{BASE}/r/{sub}/search.json",
-                    params={"q": location_name, "sort": "new", "limit": 15, "restrict_sr": "true", "t": "day"},
-                    headers={"Authorization": f"Bearer {token}", "User-Agent": "CityPulse/1.0"},
-                    timeout=10,
-                )
-                if r.status_code == 200:
-                    for post in r.json().get("data", {}).get("children", []):
-                        d = post["data"]
-                        posts.append({
-                            "title": d.get("title", ""),
-                            "text": d.get("selftext", "")[:300],
-                            "score": d.get("score", 0),
-                            "url": f"https://reddit.com{d.get('permalink', '')}",
-                        })
-    except Exception as e:
-        logger.warning(f"Reddit location fetch failed: {e}")
-        return _mock_posts_structured(location_name)
-
-    return posts[:max_posts] if posts else _mock_posts_structured(location_name)
-
-
-def _mock_posts_structured(location_name: str) -> list[dict]:
-    area = location_name or "the area"
-    return [
-        {"title": f"Beautiful day in {area} today", "text": "Lots of people out walking", "score": 42, "url": ""},
-        {"title": f"Traffic update for {area}", "text": "Heavier than usual near downtown", "score": 28, "url": ""},
-        {"title": f"Events this weekend in {area}", "text": "Food festival and street fair", "score": 91, "url": ""},
-    ]
 
 
 def _mock_posts(keywords: list[str]) -> list[str]:

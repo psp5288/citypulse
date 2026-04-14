@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from backend.database import get_pool
-from backend.core.models import SimulationResult, ZoneScore
+from backend.core.models import IrisEvent, SimulationResult, ZoneScore
 
 logger = logging.getLogger(__name__)
 
@@ -263,6 +263,131 @@ async def get_freshness_timestamps() -> dict:
         "snapshots_last_write": latest_snapshot.isoformat() if latest_snapshot else None,
         "events_last_write": latest_event.isoformat() if latest_event else None,
     }
+
+
+# ── Iris storage/state ────────────────────────────────────────────────────────
+
+async def save_iris_event(event: IrisEvent) -> None:
+    pool = get_pool()
+    payload = event.model_dump()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """INSERT INTO iris_events
+               (source, location, topic, sentiment, engagement, confidence, payload, occurred_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8)""",
+            payload["source"],
+            payload["location"],
+            payload["topic"],
+            float(payload["sentiment"]),
+            float(payload["engagement"]),
+            float(payload["confidence"]),
+            json.dumps(payload.get("payload", {})),
+            payload["occurred_at"],
+        )
+
+
+async def fetch_recent_iris_events(location: str, topic: str, lookback_hours: int = 24) -> list[dict]:
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """SELECT source, location, topic, sentiment, engagement, confidence, payload, occurred_at
+               FROM iris_events
+               WHERE location = $1
+                 AND topic = $2
+                 AND occurred_at > NOW() - ($3 || ' hours')::interval
+               ORDER BY occurred_at DESC
+               LIMIT 2000""",
+            location.lower().strip(),
+            topic.lower().strip(),
+            str(max(1, lookback_hours)),
+        )
+    out: list[dict] = []
+    for r in rows:
+        payload = r["payload"]
+        if isinstance(payload, str):
+            payload = json.loads(payload) if payload else {}
+        out.append(
+            {
+                "source": r["source"],
+                "location": r["location"],
+                "topic": r["topic"],
+                "sentiment": r["sentiment"],
+                "engagement": r["engagement"],
+                "confidence": r["confidence"],
+                "payload": payload or {},
+                "occurred_at": r["occurred_at"].isoformat() if r["occurred_at"] else None,
+            }
+        )
+    return out
+
+
+async def upsert_iris_state_cache(key: str, state: dict) -> None:
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """INSERT INTO iris_state_cache (key, state_json, updated_at)
+               VALUES ($1, $2::jsonb, NOW())
+               ON CONFLICT (key) DO UPDATE
+               SET state_json = EXCLUDED.state_json, updated_at = NOW()""",
+            key,
+            json.dumps(state),
+        )
+
+
+async def save_oracle_forecast(location: str, topic: str, scenario_text: str, result: dict) -> str:
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        oid = await conn.fetchval(
+            """INSERT INTO oracle_forecasts (location, topic, scenario_text, result_json)
+               VALUES ($1,$2,$3,$4::jsonb)
+               RETURNING id::text""",
+            location.lower().strip(),
+            topic.lower().strip(),
+            scenario_text,
+            json.dumps(result),
+        )
+    return oid
+
+
+async def get_oracle_forecast(forecast_id: str) -> Optional[dict]:
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT result_json FROM oracle_forecasts WHERE id = $1::uuid",
+            forecast_id,
+        )
+    if not row:
+        return None
+    return json.loads(row["result_json"])
+
+
+async def get_historical_analogs(location: str, topic: str, limit: int = 10) -> list[dict]:
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """SELECT id::text AS id, scenario_text, result_json, created_at
+               FROM oracle_forecasts
+               WHERE location = $1 AND topic = $2
+               ORDER BY created_at DESC
+               LIMIT $3""",
+            location.lower().strip(),
+            topic.lower().strip(),
+            limit,
+        )
+    analogs: list[dict] = []
+    for r in rows:
+        result_json = r["result_json"]
+        if isinstance(result_json, str):
+            result_json = json.loads(result_json) if result_json else {}
+        analogs.append(
+            {
+                "id": r["id"],
+                "scenario_text": r["scenario_text"],
+                "result": result_json,
+                "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+            }
+        )
+    return analogs
 
 
 # ── Zone legacy (optional) ──────────────────────────────────────────────────────

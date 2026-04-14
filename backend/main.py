@@ -12,23 +12,19 @@ import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.config import settings
 from backend.database import close_db, init_db
-from backend.routers import alerts, analytics, auth, districts, events, logs, simulate
+from backend.routers import alerts, analytics, auth, districts, events, geo, iris_oracle, location_intel, logs, simulate
 from backend.services.ingestion_loop import run_city_pulse_loop
 from backend.services.kafka_consumer import start_kafka_consumer
 from backend.services.postgres_service import get_freshness_timestamps
-from backend.services.redis_service import (
-    close_redis,
-    get_freshness_meta,
-    health_check as redis_health,
-    init_redis,
-)
+from backend.services.redis_service import close_redis, get_freshness_meta, health_check as redis_health, init_redis
 from backend.services.watsonx_service import health_check as watsonx_health
 
 logging.basicConfig(
@@ -36,17 +32,18 @@ logging.basicConfig(
     format='{"time":"%(asctime)s","level":"%(levelname)s","msg":"%(message)s"}',
 )
 logger = logging.getLogger(__name__)
+_rate_window: dict[str, list[float]] = {}
 
 
-def _freshness_state(iso_ts: str | None, stale_after_seconds: int) -> str:
-    if not iso_ts:
+def _freshness_state(ts: str | None, stale_after_seconds: int) -> str:
+    if not ts:
         return "empty"
     try:
-        ts = datetime.fromisoformat(iso_ts.replace("Z", "+00:00"))
+        value = datetime.fromisoformat(ts)
+        age = (datetime.now(timezone.utc) - value).total_seconds()
+        return "ok" if age <= stale_after_seconds else "stale"
     except Exception:
-        return "stale"
-    age = (datetime.now(timezone.utc) - ts).total_seconds()
-    return "ok" if age <= stale_after_seconds else "stale"
+        return "unknown"
 
 
 async def _postgres_health() -> bool:
@@ -63,8 +60,6 @@ async def _postgres_health() -> bool:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Print masked config summary — never logs raw secrets
-    settings.log_startup_summary()
     await init_db()
     await init_redis()
     app.state.bg_tasks = []
@@ -83,23 +78,34 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="City Pulse API", version="1.0.0", lifespan=lifespan)
 
-# In production, restrict origins to your actual frontend domain.
-# In development, allow localhost on common ports.
-_ALLOWED_ORIGINS = (
-    ["*"]
-    if settings.environment == "development"
-    else [
-        "https://your-production-domain.com",  # replace before deploying
-    ]
-)
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_ALLOWED_ORIGINS,
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "Accept"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def request_guardrails(request: Request, call_next):
+    ip = request.client.host if request.client else "unknown"
+    now = datetime.now(timezone.utc).timestamp()
+    window = _rate_window.setdefault(ip, [])
+    while window and now - window[0] > 60:
+        window.pop(0)
+    if len(window) >= 180:
+        return JSONResponse(
+            status_code=429,
+            content={"ok": False, "error": "rate_limited", "detail": "Too many requests. Retry in ~1 minute."},
+        )
+    window.append(now)
+    try:
+        return await call_next(request)
+    except Exception as exc:
+        logger.exception("Unhandled error on %s: %s", request.url.path, exc)
+        return JSONResponse(status_code=500, content={"ok": False, "error": "internal_error", "detail": str(exc)})
+
 
 app.include_router(districts.router, prefix="/api")
 app.include_router(districts.ws_router)
@@ -109,6 +115,9 @@ app.include_router(events.router, prefix="/api")
 app.include_router(logs.router, prefix="/api")
 app.include_router(auth.router, prefix="/api")
 app.include_router(simulate.router, prefix="/api")
+app.include_router(iris_oracle.router, prefix="/api")
+app.include_router(geo.router, prefix="/api")
+app.include_router(location_intel.router)
 
 
 @app.get("/api/health")
@@ -128,7 +137,6 @@ async def health():
             freshness_cache = await get_freshness_meta()
         except Exception:
             pass
-
     status = "ok" if redis_ok and pg_ok else "degraded"
     return {
         "status": status,
@@ -141,27 +149,19 @@ async def health():
         "freshness": {
             "districts_cache": {
                 "last_update": freshness_cache.get("districts_last_update"),
-                "status": _freshness_state(
-                    freshness_cache.get("districts_last_update"), stale_after_seconds=120
-                ),
+                "status": _freshness_state(freshness_cache.get("districts_last_update"), stale_after_seconds=120),
             },
             "analytics_cache": {
                 "last_update": freshness_cache.get("analytics_last_update"),
-                "status": _freshness_state(
-                    freshness_cache.get("analytics_last_update"), stale_after_seconds=300
-                ),
+                "status": _freshness_state(freshness_cache.get("analytics_last_update"), stale_after_seconds=300),
             },
             "snapshots_db": {
                 "last_write": freshness_pg.get("snapshots_last_write"),
-                "status": _freshness_state(
-                    freshness_pg.get("snapshots_last_write"), stale_after_seconds=300
-                ),
+                "status": _freshness_state(freshness_pg.get("snapshots_last_write"), stale_after_seconds=300),
             },
             "events_db": {
                 "last_write": freshness_pg.get("events_last_write"),
-                "status": _freshness_state(
-                    freshness_pg.get("events_last_write"), stale_after_seconds=900
-                ),
+                "status": _freshness_state(freshness_pg.get("events_last_write"), stale_after_seconds=900),
             },
         },
     }

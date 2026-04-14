@@ -1,0 +1,235 @@
+CITY PULSE — JUDGES PRODUCT BRIEF
+=================================
+
+1) Product Snapshot
+-------------------
+City Pulse is a real-time urban intelligence platform that helps city teams monitor district health, risk, and sentiment.  
+It fuses multiple signal sources (social chatter, weather, events, mobility-style indicators) into one live operational view.
+
+Core value:
+- Detect fast-changing district conditions early
+- Explain "why risk is rising" with contextual signals
+- Simulate likely public reaction before taking action (Oracle swarm simulation)
+- Support faster, better, and more confident city decisions
+
+
+2) Problem We Solve
+-------------------
+City operations data is fragmented across many tools and arrives at different speeds.  
+Decision makers often see metrics too late or without context.
+
+Common gaps:
+- No single live map of district-level risk + sentiment
+- Hard to know if a trend is temporary noise or real escalation
+- No simple "what-if" simulator for policy/news impacts
+- Limited operational visibility into freshness and system health
+
+
+3) Our Solution
+---------------
+City Pulse provides:
+- A district-first monitoring dashboard (The Eye)
+- A predictive swarm simulation environment (The Oracle)
+- A dedicated analytics page for trend and KPI visibility
+- Backend health/freshness observability for trust and reliability
+
+It combines real-time serving (Redis), historical persistence (PostgreSQL), AI scoring (IBM WatsonX), and extensible streaming stubs (Kafka).
+
+
+4) High-Level Architecture
+--------------------------
+Backend:
+- FastAPI API server
+- PostgreSQL for persistent history and simulation results
+- Redis for low-latency live district and analytics cache
+- IBM WatsonX for district scoring and agent reaction inference
+- Kafka producer/consumer stubs for scalable event ingestion
+
+Frontend:
+- Dashboard (The Eye): world map + continent/country/district drill-down
+- Oracle (Simulator): swarm simulation + live progress monitor
+- Analytics page: KPI cards + trend/doughnut charts + district snapshot table
+
+Platform/Dev:
+- Docker Compose for local infrastructure
+- Health endpoint with service + freshness status
+- JWT auth routes and foundations for protected operations
+
+
+5) Backend Features (Grouped)
+-----------------------------
+A) District Intelligence APIs
+- GET /api/districts
+- GET /api/districts/{id}
+- GET /api/districts/snapshots
+
+What it does:
+- Serves live district scores from cache
+- Provides detailed district context and recent snapshot history
+- Supports time-based historical analysis
+
+B) Real-Time Push
+- WS /ws/districts
+
+What it does:
+- Broadcasts district updates to connected clients
+- Sends periodic ping/keepalive events
+
+C) Analytics APIs
+- GET /api/analytics?range=1h|6h|24h|7d
+
+What it does:
+- Returns KPI + chart-ready data series
+- Uses cache to reduce repeated compute load
+- Includes in-flight request coalescing to avoid duplicate heavy work
+
+D) Alerts, Events, Logs
+- GET /api/alerts
+- POST /api/alerts/{id}/resolve
+- GET /api/events
+- GET /api/logs
+
+What it does:
+- Tracks notable incidents and operational logs
+- Supports alert lifecycle actions
+
+E) Authentication
+- POST /api/auth/register
+- POST /api/auth/login
+- POST /api/auth/refresh
+
+What it does:
+- JWT-based auth flow groundwork for secure extensions
+
+F) Oracle Simulation APIs
+- POST /api/simulate
+- GET /api/simulate/{simulation_id}
+- GET /api/simulate/history
+
+What it does:
+- Starts asynchronous swarm simulations
+- Supports polling status and final outcomes
+- Stores simulation history for operational review
+
+
+6) AI + Simulation Features
+---------------------------
+A) WatsonX Migration and Scoring
+- Replaced Gemini path with IBM WatsonX integration
+- Configured with WATSONX_* environment variables
+- Added robust fallback behavior when credentials are missing/unavailable
+
+B) Swarm Engine
+- Generates synthetic agent populations by archetype
+- Runs reactions in batches for scalability
+- Aggregates sentiment, virality, backlash, confidence, and peak reaction timing
+- Compares predicted sentiment vs live baseline (accuracy context)
+
+C) Live Oracle Telemetry (new enhancement)
+- During running state, backend now persists:
+  - progress_pct
+  - processed_agents
+  - total_agents
+  - action_breakdown
+  - recent_actions
+
+This enables real-time monitor UX instead of waiting only for final result.
+
+
+7) Frontend Features (Grouped)
+------------------------------
+A) The Eye (Dashboard)
+- World map centered globally
+- Continent tabs: Americas, Europe, Asia, Africa, Oceania
+- Country list by continent (active/inactive states)
+- District list appears for active country data
+- District markers + map fly-to behaviors
+- Right-panel detail and bottom mini-card bar retained
+
+B) The Oracle (Simulator)
+- Scenario input + sector selection + agent count
+- External factors injection controls
+- Simulation history table
+- NEW minimal live monitor section during run:
+  - Progress bar (processed/total)
+  - Action breakdown chips
+  - Prompt/filter bar for swarm action inspection
+  - Rolling recent actions stream (archetype/action/sentiment/reasoning)
+
+C) Analytics Page
+- Full-page analytics layout
+- Range selector (1h/6h/24h/7d)
+- 4 KPI cards (density, latency, events, cache hit)
+- Trend line chart + risk distribution doughnut
+- District snapshot table sorted by risk
+- Mock-data fallback so charts always render if API is unavailable
+
+D) Visual Design System
+- Unified off-black/off-white muted palette
+- Cleaner, less noisy dashboard experience
+- Consistent theme across dashboard, simulator, and analytics
+
+
+8) Reliability, Performance, and Ops Improvements
+--------------------------------------------------
+- FastAPI lifespan task management for safe startup/shutdown
+  - background tasks are tracked and cancelled cleanly
+- Analytics request coalescing to reduce redundant compute under concurrency
+- Enhanced /api/health:
+  - service status (Redis, Postgres, WatsonX, Kafka configured)
+  - data freshness states (ok/stale/empty) for cache and DB writes
+- Database compatibility hardening:
+  - additive schema updates for missing columns
+  - relaxed legacy NOT NULL constraints where needed for local dev continuity
+
+
+9) Security and Governance
+--------------------------
+- JWT auth routes implemented
+- Secrets handled via environment variables (.env)
+- .gitignore includes .env and common secret/artifact patterns
+- Local dev includes pre-commit secret scan script foundation
+
+
+10) What Makes City Pulse Distinct
+----------------------------------
+- Combines monitoring + prediction + simulation in one workflow
+- District-level operational focus (not generic city dashboarding)
+- Live + historical + what-if views in one product
+- AI-assisted scoring with transparent fallback behavior
+- Built for "decision velocity" under uncertainty
+
+
+11) Suggested Demo Flow for Judges (5-7 minutes)
+-------------------------------------------------
+1. Open Dashboard (The Eye)
+   - Show continent/country selection and district risk visibility
+2. Open Analytics
+   - Show trend/risk charts and KPI interpretation
+3. Open Oracle
+   - Run scenario simulation
+   - Show live progress + swarm action feed + prompt filtering
+4. Open Health endpoint (/api/health)
+   - Demonstrate service and freshness observability
+5. Close with actionability
+   - "From signal detection -> prediction -> response planning"
+
+
+12) Current Scope and Next Up
+-----------------------------
+Current scope:
+- Functional end-to-end platform with real-time district monitoring and simulation
+- AI scoring integrated via WatsonX
+- Core reliability and observability improvements complete
+
+Planned next enhancements:
+- Middleware-level rate limiting
+- Standardized API error envelope
+- Deeper repository split for data-access layer maintainability
+- Expanded automated tests (contracts, freshness, simulation telemetry)
+- Optional WebSocket push for simulation events (reduce polling latency)
+
+
+13) One-Line Pitch
+------------------
+City Pulse is an AI-powered urban command layer that lets teams monitor district risk in real time, forecast social impact with swarm simulation, and act faster with confidence.

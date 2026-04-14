@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>The Eye — DevCity Pulse</title>
+  <title>Iris — DevCity Pulse</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;600;700&display=swap" rel="stylesheet" />
@@ -71,7 +71,7 @@
       </div>
       <nav class="dc-nav">
         <a href="/">Home</a>
-        <a href="/dashboard" class="active">The Eye</a>
+        <a href="/dashboard" class="active">Iris</a>
         <a href="/simulator">The Oracle</a>
         <a href="/analytics">Analytics</a>
       </nav>
@@ -102,17 +102,35 @@
     <!-- Main 3-col grid -->
     <div class="dc-main">
 
-      <!-- Left panel: continent > country > district -->
-      <aside class="dc-panel" aria-label="Districts">
+      <!-- Left panel: search + pinned places -->
+      <aside class="dc-panel" aria-label="Location search">
         <div class="dc-panel__header">
-          <span class="dc-panel__title">Monitoring Scope</span>
-          <span class="dc-panel__count" id="district-count">—</span>
+          <span class="dc-panel__title">Global Monitor</span>
+          <span class="dc-panel__count" id="hud-places-count">—</span>
         </div>
-        <div style="padding:8px;border-bottom:1px solid var(--bg-border)" id="continent-tabs"></div>
-        <div class="zone-list" id="country-list" style="border-bottom:1px solid var(--bg-border)"></div>
-        <div class="zone-list" id="zone-list">
-          <div class="skeleton" style="height:72px;margin:6px"></div>
-          <div class="skeleton" style="height:72px;margin:6px"></div>
+
+        <!-- Search -->
+        <div class="sidebar-search-wrap">
+          <div class="sidebar-search-row">
+            <input id="map-search" class="sidebar-search-input" placeholder="Search any city, country, town…" autocomplete="off" />
+            <button id="map-search-btn" class="btn btn--ghost btn--sm">Go</button>
+          </div>
+          <div id="map-search-suggest" class="sidebar-search-suggest" style="display:none"></div>
+        </div>
+
+        <!-- How to use hint -->
+        <div class="panel-hint" id="panel-hint">
+          <div class="panel-hint__icon">🌍</div>
+          <div class="panel-hint__text">Search a city above or click anywhere on the map to pull live intelligence</div>
+        </div>
+
+        <!-- Pinned / recently searched places -->
+        <div id="searched-places-section" style="display:none;border-top:1px solid var(--bg-border)">
+          <div class="plabel-row">
+            <span class="dc-panel__sub">Recent Locations</span>
+            <button id="clear-places-btn" class="btn btn--ghost btn--xs">Clear</button>
+          </div>
+          <div id="searched-places-list"></div>
         </div>
       </aside>
 
@@ -120,23 +138,28 @@
       <main class="dc-map-wrap" aria-label="City map">
         <div id="dc-map"></div>
 
-        <!-- Map HUD: top-left stats -->
+        <!-- Map HUD: top-left mode + active location -->
         <div class="map-hud map-hud--tl" id="map-hud-stats">
           <div class="map-stat-block">
             <div class="map-stat-row">
-              <span class="map-stat-dot" style="background:#C47070"></span>
-              Critical Risk
-              <span class="map-stat-val" id="hud-critical">—</span>
+              <span class="map-stat-dot" style="background:#0F62FE"></span>
+              Monitor
+              <span class="map-stat-val" id="hud-mode-label">Global</span>
             </div>
             <div class="map-stat-row">
+              <span class="map-stat-dot" style="background:#24A148"></span>
+              Location
+              <span class="map-stat-val" id="hud-location-label">—</span>
+            </div>
+            <div class="map-stat-row" style="opacity:.6">
+              <span class="map-stat-dot" style="background:#C47070"></span>
+              Critical
+              <span class="map-stat-val" id="hud-critical">—</span>
+            </div>
+            <div class="map-stat-row" style="opacity:.6">
               <span class="map-stat-dot" style="background:#C4A840"></span>
               High Risk
               <span class="map-stat-val" id="hud-high">—</span>
-            </div>
-            <div class="map-stat-row">
-              <span class="map-stat-dot" style="background:#5DAF78"></span>
-              Low Risk
-              <span class="map-stat-val" id="hud-low">—</span>
             </div>
           </div>
         </div>
@@ -168,10 +191,6 @@
 
     </div><!-- /.dc-main -->
 
-    <!-- Bottom scorecard bar -->
-    <div class="dc-bottom" id="bottom-bar" role="region" aria-label="District scorecards">
-      <!-- Populated by dashboard.js -->
-    </div>
 
   </div><!-- /.dc-shell -->
 
@@ -184,6 +203,7 @@
   </p>
 
   <script src="/js/api.js"></script>
+  <script src="/js/place-search.js"></script>
   <script src="/js/map.js"></script>
   <script src="/js/dashboard.js"></script>
 
