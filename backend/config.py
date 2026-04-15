@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     # App — keep batches modest so many parallel WatsonX calls do not stall the sim worker
     update_interval_seconds: int = 30
     simulation_batch_size: int = 12
+    watsonx_agent_timeout_seconds: int = 18
+    # Hard wall-clock timeout for run_swarm; prevents runaway simulations
+    simulation_run_timeout_seconds: int = 600
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 

@@ -1,12 +1,13 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Iris — DevCity Pulse</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;600;700&display=swap" rel="stylesheet" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;600;700&display=swap" rel="stylesheet" />
 
   <!-- Leaflet -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -16,10 +17,13 @@
 
   <style>
     /* Leaflet tooltip override for this page */
-    .dc-map-tooltip { background:#181818; border:1px solid #272727; color:#888888; font-family:'IBM Plex Mono',monospace; font-size:10px; border-radius:4px; padding:5px 10px; }
+    .dc-map-tooltip { background:var(--bg-elevated); border:1px solid var(--bg-border); color:var(--text-secondary); font-family:'JetBrains Mono','IBM Plex Mono',monospace; font-size:10px; border-radius:4px; padding:5px 10px; }
     .dc-map-tooltip::before { display:none; }
     .leaflet-tooltip.dc-map-tooltip { box-shadow:0 4px 20px rgba(0,0,0,.5); }
   </style>
+  <script>
+    (function(){ var t=localStorage.getItem('cp-theme')||'dark'; document.documentElement.dataset.theme=t; })();
+  </script>
 </head>
 <body>
 
@@ -97,6 +101,7 @@
         <span class="live-dot"></span>
         <span class="live-label">LIVE</span>
       </div>
+      <button class="theme-toggle" id="theme-toggle" title="Toggle light/dark mode">◑</button>
     </header>
 
     <!-- Main 3-col grid -->
@@ -206,6 +211,19 @@
   <script src="/js/place-search.js"></script>
   <script src="/js/map.js"></script>
   <script src="/js/dashboard.js"></script>
+  <script>
+    document.getElementById('theme-toggle')?.addEventListener('click', function() {
+      var html = document.documentElement;
+      var next = html.dataset.theme === 'dark' ? 'light' : 'dark';
+      html.dataset.theme = next;
+      localStorage.setItem('cp-theme', next);
+    });
+    (function(){
+      var cl=document.getElementById('topbar-clock'), dt=document.getElementById('topbar-date');
+      function tick(){ var n=new Date(); if(cl) cl.textContent=n.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'}); if(dt) dt.textContent=n.toLocaleDateString([],{month:'short',day:'numeric'}); }
+      tick(); setInterval(tick,1000);
+    })();
+  </script>
 
 </body>
 </html>

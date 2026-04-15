@@ -1,11 +1,13 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Analytics — DevCity Pulse</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;600;700&display=swap" rel="stylesheet" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;600;700&display=swap" rel="stylesheet" />
+  <script>(function(){ var t=localStorage.getItem('cp-theme')||'dark'; document.documentElement.dataset.theme=t; })();</script>
   <link rel="stylesheet" href="/css/main.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
@@ -30,6 +32,7 @@
         <span class="dc-clock__date" id="topbar-date"></span>
         <span id="topbar-clock"></span>
       </div>
+      <button class="theme-toggle" id="theme-toggle" title="Toggle light/dark mode">◑</button>
     </header>
 
     <!-- Live status bar -->
@@ -160,5 +163,16 @@
 
   <script src="/js/api.js"></script>
   <script src="/js/analytics.js"></script>
+  <script>
+    (function(){
+      var cl=document.getElementById('topbar-clock'), dt=document.getElementById('topbar-date');
+      function tick(){ var n=new Date(); if(cl) cl.textContent=n.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'}); if(dt) dt.textContent=n.toLocaleDateString([],{month:'short',day:'numeric'}); }
+      tick(); setInterval(tick,1000);
+      document.getElementById('theme-toggle')?.addEventListener('click',function(){
+        var html=document.documentElement, next=html.dataset.theme==='dark'?'light':'dark';
+        html.dataset.theme=next; localStorage.setItem('cp-theme',next);
+      });
+    })();
+  </script>
 </body>
 </html>

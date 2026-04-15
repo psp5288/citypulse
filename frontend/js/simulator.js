@@ -6,6 +6,7 @@
   let sentimentChart  = null;
   let forecastChart   = null;
   let pollTimer       = null;
+  let pollFailures    = 0;
   let selectedSector  = 'general';
   let monitorPrompt   = '';
   let customTarget    = null;
@@ -48,26 +49,33 @@
   function sentimentClass(s)  { return { positive:'sent-positive', negative:'sent-negative' }[(s||'').toLowerCase()] || 'sent-neutral'; }
 
   /* ════════════════════════════════════════════════════════════════════════
-     D3 AGENT WEB GRAPH — MiroFish-style SVG force-directed network
+     D3 AGENT WEB GRAPH — MiroFish-exact SVG force-directed network
+     • 10px base radius, white stroke (MiroFish style)
+     • Pink #E91E63 selected, blue #3498db connected edges
+     • Quadratic bezier curves, drag-threshold 3px, zoom 0.1-4x
+     • Floating legend (bottom-left) + detail panel (top-right)
      ════════════════════════════════════════════════════════════════════════ */
   class AgentWebGraph {
     constructor(wrap) {
       this.wrap = wrap;
       this.d3   = global.d3;
-      this._running = false;
-      this._sim     = null;
-      this._svg     = null;
-      this._g       = null;
-      this._nodeEl  = null;
-      this._linkEl  = null;
-      this._linkLbl = null;
-      this._resizeObs = null;
+      this._running    = false;
+      this._sim        = null;
+      this._svg        = null;
+      this._g          = null;
+      this._nodeEl     = null;
+      this._linkEl     = null;
+      this._linkLblEl  = null;
+      this._resizeObs  = null;
       this._selectedId = null;
+
+      /* Base radius (MiroFish: 10px) */
+      this.BASE_R = 10;
 
       /* Node data */
       this.nodeData = Object.entries(ARCHETYPE_META).map(([id, m]) => ({
         id, label: m.label, short: m.short, color: m.color,
-        count: 0, r: 22, lastActive: 0, sentiment: {}, topAction: null,
+        count: 0, r: this.BASE_R, lastActive: 0, sentiment: {}, topAction: null,
       }));
 
       /* Edge topology (matches cascade logic in swarm_engine) */
@@ -87,12 +95,29 @@
       this._init();
     }
 
+    /* ─ helpers ─ */
+    _isLight() { return document.documentElement.dataset.theme === 'light'; }
+    _edgeDefault(d) {
+      if (this._isLight()) return d.rel === 'counter' ? 'rgba(196,112,138,0.35)' : '#C0C0C0';
+      return d.rel === 'counter' ? 'rgba(196,112,138,0.4)' : 'rgba(255,255,255,0.15)';
+    }
+    _edgeActive(d) {
+      if (this._isLight()) return d.rel === 'counter' ? '#E91E63' : '#3498db';
+      return d.rel === 'counter' ? '#E91E63' : '#3498db';
+    }
+    _nodeStroke(_d, selected) {
+      if (selected) return '#E91E63';
+      return this._isLight() ? '#FFFFFF' : 'rgba(255,255,255,0.85)';
+    }
+    _labelColor() { return this._isLight() ? '#333333' : 'rgba(255,255,255,0.6)'; }
+    _edgeLabelColor() { return this._isLight() ? '#999999' : '#444444'; }
+
     /* ── Init SVG + simulation ── */
     _init() {
       const d3 = this.d3;
       if (!d3) { console.warn('[AgentWebGraph] D3 not loaded'); return; }
 
-      d3.select(this.wrap).selectAll('*:not(#graph-node-detail)').remove();
+      d3.select(this.wrap).selectAll('*:not(#graph-node-detail):not(.graph-float-legend)').remove();
 
       const rect = this.wrap.getBoundingClientRect();
       this.W = Math.max(300, rect.width);
@@ -107,50 +132,49 @@
         .style('overflow', 'hidden');
       this._svg = svg;
 
-      /* Defs: arrowhead markers */
+      /* Defs: arrowhead markers — MiroFish exact */
       const defs = svg.append('defs');
       const addArrow = (id, color) =>
         defs.append('marker')
           .attr('id', id)
           .attr('viewBox', '0 -4 8 8')
-          .attr('refX', 18).attr('refY', 0)
-          .attr('markerWidth', 7).attr('markerHeight', 7)
+          .attr('refX', 14).attr('refY', 0)
+          .attr('markerWidth', 6).attr('markerHeight', 6)
           .attr('orient', 'auto')
           .append('path').attr('d', 'M0,-4L8,0L0,4').attr('fill', color);
-      addArrow('arr-cascade', '#555555');
-      addArrow('arr-cascade-active', '#aaaaaa');
-      addArrow('arr-counter', '#C4708A66');
-      addArrow('arr-counter-active', '#C4708A');
+      addArrow('arr-cas',  this._isLight() ? '#AAAAAA' : '#555555');
+      addArrow('arr-cas-a', '#3498db');
+      addArrow('arr-cnt',  this._isLight() ? '#E91E6355' : '#C4708A55');
+      addArrow('arr-cnt-a', '#E91E63');
 
-      /* Zoom / pan (like MiroFish) */
+      /* Zoom / pan — 0.1x to 4x (MiroFish) */
       const g = svg.append('g');
       this._g = g;
       svg.call(
-        d3.zoom().scaleExtent([0.25, 3])
+        d3.zoom().scaleExtent([0.1, 4])
           .on('zoom', (ev) => g.attr('transform', ev.transform))
       );
 
       /* Layer order: links → link-labels → nodes */
-      this._linkG     = g.append('g').attr('class', 'links');
-      this._linkLblG  = g.append('g').attr('class', 'link-labels');
-      this._nodeG     = g.append('g').attr('class', 'nodes');
+      this._linkG    = g.append('g').attr('class', 'links');
+      this._linkLblG = g.append('g').attr('class', 'link-labels');
+      this._nodeG    = g.append('g').attr('class', 'nodes');
 
-      /* Force simulation (same forces as MiroFish) */
+      /* Force simulation — MiroFish params */
       this._sim = d3.forceSimulation(this.nodeData)
-        .force('link',    d3.forceLink(this.edgeData).id(d => d.id).distance(140))
-        .force('charge',  d3.forceManyBody().strength(-600))
+        .force('link',    d3.forceLink(this.edgeData).id(d => d.id).distance(150))
+        .force('charge',  d3.forceManyBody().strength(-400))
         .force('center',  d3.forceCenter(this.W / 2, this.H / 2))
-        .force('collide', d3.forceCollide(d => d.r + 10))
-        .force('x',       d3.forceX(this.W / 2).strength(0.05))
-        .force('y',       d3.forceY(this.H / 2).strength(0.05))
-        .alphaDecay(0.025)
+        .force('collide', d3.forceCollide(50))
+        .force('x',       d3.forceX(this.W / 2).strength(0.04))
+        .force('y',       d3.forceY(this.H / 2).strength(0.04))
         .on('tick', () => this._tick());
 
       this._renderElements();
 
       /* Click background → deselect */
       svg.on('click', (ev) => {
-        if (ev.target.tagName === 'svg' || ev.target.tagName === 'g') {
+        if (ev.target.tagName === 'svg') {
           this._selectedId = null;
           this._hideDetail();
           this._resetHighlight();
@@ -163,56 +187,73 @@
         this.W = r.width; this.H = r.height;
         this._sim
           .force('center', d3.forceCenter(this.W / 2, this.H / 2))
-          .force('x', d3.forceX(this.W / 2).strength(0.05))
-          .force('y', d3.forceY(this.H / 2).strength(0.05))
+          .force('x', d3.forceX(this.W / 2).strength(0.04))
+          .force('y', d3.forceY(this.H / 2).strength(0.04))
           .alpha(0.2).restart();
       });
       this._resizeObs.observe(this.wrap);
+
+      this._buildFloatLegend();
+    }
+
+    /* ── Build floating legend (bottom-left, MiroFish style) ── */
+    _buildFloatLegend() {
+      let leg = this.wrap.querySelector('.graph-float-legend');
+      if (!leg) {
+        leg = document.createElement('div');
+        leg.className = 'graph-float-legend';
+        this.wrap.appendChild(leg);
+      }
+      leg.innerHTML = `
+        <div class="gfl-title">ARCHETYPE KEY</div>
+        <div class="gfl-items">
+          ${Object.values(ARCHETYPE_META).map(m =>
+            `<div class="gfl-item">
+              <span class="gfl-dot" style="background:${m.color}"></span>
+              <span class="gfl-lbl">${m.label}</span>
+            </div>`).join('')}
+        </div>`;
     }
 
     /* ── Draw all SVG elements ── */
     _renderElements() {
       const d3 = this.d3;
 
-      /* Links (curved paths like MiroFish) */
+      /* Links — straight lines (MiroFish default for single edges) */
       this._linkEl = this._linkG.selectAll('path')
         .data(this.edgeData).enter().append('path')
         .attr('fill', 'none')
-        .attr('stroke', d => d.rel === 'counter' ? '#C4708A33' : '#ffffff15')
-        .attr('stroke-width', 1)
-        .attr('stroke-dasharray', d => d.rel === 'counter' ? '2 5' : '4 4')
-        .attr('marker-end', d => `url(#arr-${d.rel})`)
-        .style('cursor', 'pointer');
+        .attr('stroke', d => this._edgeDefault(d))
+        .attr('stroke-width', 1.5)
+        .attr('marker-end', d => `url(#arr-${d.rel === 'counter' ? 'cnt' : 'cas'})`)
+        .style('cursor', 'default');
 
-      /* Edge relation labels */
-      this._linkLbl = this._linkLblG.selectAll('text')
+      /* Edge relation labels (9px, midpoint, MiroFish style) */
+      this._linkLblEl = this._linkLblG.selectAll('text')
         .data(this.edgeData).enter().append('text')
-        .text(d => d.rel === 'counter' ? 'COUNTER' : 'CASCADE')
-        .attr('font-size', '7px')
-        .attr('fill', '#333333')
+        .text(d => d.rel === 'counter' ? 'COUNTER' : '')
+        .attr('font-size', '8px')
+        .attr('fill', this._edgeLabelColor())
         .attr('text-anchor', 'middle')
         .attr('dominant-baseline', 'middle')
         .style('pointer-events', 'none')
-        .style('font-family', "'IBM Plex Mono', monospace");
+        .style('font-family', "'JetBrains Mono','IBM Plex Mono',monospace");
 
-      /* Node groups (drag + click like MiroFish) */
+      /* Node groups — drag (threshold 3px) + click */
       this._nodeEl = this._nodeG.selectAll('g')
         .data(this.nodeData).enter().append('g')
         .style('cursor', 'pointer')
         .call(
           d3.drag()
-            .on('start', (ev, d) => {
-              d._dsx = ev.x; d._dsy = ev.y; d._dragging = false;
-            })
+            .on('start', (ev, d) => { d._dsx = ev.x; d._dsy = ev.y; d._dragging = false; })
             .on('drag', (ev, d) => {
-              const dist = Math.hypot(ev.x - d._dsx, ev.y - d._dsy);
-              if (!d._dragging && dist > 4) {
+              if (!d._dragging && Math.hypot(ev.x - d._dsx, ev.y - d._dsy) > 3) {
                 d._dragging = true;
                 this._sim.alphaTarget(0.3).restart();
               }
               if (d._dragging) { d.fx = ev.x; d.fy = ev.y; }
             })
-            .on('end', (ev, d) => {
+            .on('end', (_ev, d) => {
               if (d._dragging) this._sim.alphaTarget(0);
               d.fx = null; d.fy = null; d._dragging = false;
             })
@@ -226,181 +267,148 @@
         .on('mouseenter', (ev, d) => {
           if (this._selectedId !== d.id) {
             d3.select(ev.currentTarget).select('circle')
-              .attr('stroke-width', 3)
-              .attr('stroke', '#ffffff99');
+              .attr('stroke', '#333333')
+              .attr('stroke-width', 3);
           }
         })
         .on('mouseleave', (ev, d) => {
-          if (this._selectedId !== d.id) this._styleNode(d3.select(ev.currentTarget), d);
+          if (this._selectedId !== d.id) this._styleNode(d3.select(ev.currentTarget), d, false);
         });
 
-      /* Circle */
+      /* Circle — fill color at low opacity, white stroke (MiroFish) */
       this._nodeEl.append('circle')
         .attr('r', d => d.r)
-        .attr('fill', d => d.color + '15')
-        .attr('stroke', d => d.color + '33')
-        .attr('stroke-width', 1.5);
+        .attr('fill', d => d.color + '22')
+        .attr('stroke', d => this._nodeStroke(d, false))
+        .attr('stroke-width', 2.5);
 
-      /* Short label (centred in circle) */
+      /* Label — offset dx:14 dy:4 from node center, 11px (MiroFish) */
       this._nodeEl.append('text')
-        .attr('text-anchor', 'middle')
-        .attr('dy', '-3px')
-        .attr('font-size', '10px')
-        .attr('font-weight', '600')
-        .attr('fill', d => d.color + '55')
+        .attr('class', 'node-lbl')
+        .attr('dx', d => d.r + 5)
+        .attr('dy', '4px')
+        .attr('font-size', '11px')
+        .attr('font-weight', '500')
+        .attr('fill', this._labelColor())
         .attr('pointer-events', 'none')
-        .style('font-family', "'IBM Plex Mono', monospace")
-        .text(d => d.short);
+        .style('font-family', "'Inter','IBM Plex Sans',system-ui,sans-serif")
+        .text(d => d.label);
 
-      /* Count badge (below short label) */
+      /* Count sub-label (shows action count when > 0) */
       this._nodeEl.append('text')
-        .attr('class', 'node-count')
-        .attr('text-anchor', 'middle')
-        .attr('dy', '9px')
+        .attr('class', 'node-count-lbl')
+        .attr('dx', d => d.r + 5)
+        .attr('dy', '18px')
         .attr('font-size', '9px')
-        .attr('fill', 'rgba(255,255,255,0)')
+        .attr('fill', 'transparent')
         .attr('pointer-events', 'none')
-        .style('font-family', "'IBM Plex Mono', monospace")
+        .style('font-family', "'JetBrains Mono','IBM Plex Mono',monospace")
         .text('');
-
-      /* Full name label below circle (like MiroFish's node label) */
-      this._nodeEl.append('text')
-        .attr('class', 'node-full-label')
-        .attr('text-anchor', 'middle')
-        .attr('dy', d => (d.r + 14) + 'px')
-        .attr('font-size', '8px')
-        .attr('fill', '#444444')
-        .attr('pointer-events', 'none')
-        .style('font-family', "'IBM Plex Mono', monospace")
-        .text(d => d.short);
     }
 
     /* ── Tick: update positions ── */
     _tick() {
-      /* Curved edge paths (same quadratic-bezier as MiroFish) */
       if (this._linkEl) {
         this._linkEl.attr('d', d => {
           if (!d.source?.x) return '';
           const sx = d.source.x, sy = d.source.y;
           const tx = d.target.x, ty = d.target.y;
-          if (sx === tx && sy === ty) return ''; // degenerate
-          const dx = tx - sx, dy = ty - sy;
-          const dist = Math.sqrt(dx*dx + dy*dy) || 1;
-          /* Slight curve perpendicular to edge */
-          const ox = -dy / dist * 28;
-          const oy =  dx / dist * 28;
+          if (sx === tx && sy === ty) return '';
+          /* Quadratic bezier with slight perpendicular offset (MiroFish) */
+          const dist = Math.hypot(tx - sx, ty - sy) || 1;
+          const ox = -(ty - sy) / dist * 24;
+          const oy =  (tx - sx) / dist * 24;
           const cx = (sx + tx) / 2 + ox;
           const cy = (sy + ty) / 2 + oy;
           return `M${sx},${sy} Q${cx},${cy} ${tx},${ty}`;
         });
       }
-
-      /* Edge label midpoints */
-      if (this._linkLbl) {
-        this._linkLbl
-          .attr('x', d => d.source?.x ? ((d.source.x + d.target.x) / 2) : 0)
-          .attr('y', d => d.source?.y ? ((d.source.y + d.target.y) / 2) : 0);
+      if (this._linkLblEl) {
+        this._linkLblEl
+          .attr('x', d => d.source?.x ? (d.source.x + d.target.x) / 2 : 0)
+          .attr('y', d => d.source?.y ? (d.source.y + d.target.y) / 2 : 0);
       }
-
-      /* Node positions */
       if (this._nodeEl) {
         this._nodeEl.attr('transform', d => `translate(${d.x ?? 0},${d.y ?? 0})`);
       }
     }
 
-    /* ── Highlight / style helpers ── */
-    _styleNode(sel, d) {
+    /* ── Style helpers ── */
+    _styleNode(sel, d, selected) {
+      const dom = _domSentiment(d.sentiment);
+      let fill = d.color + '22';
+      let stroke = this._nodeStroke(d, !!selected);
+      if (!selected) {
+        if (dom === 'positive') { fill = '#1A8A4722'; stroke = 'rgba(26,138,71,0.8)'; }
+        else if (dom === 'negative') { fill = '#C4707022'; stroke = 'rgba(196,112,112,0.8)'; }
+      }
       sel.select('circle')
         .attr('r', d.r)
-        .attr('fill', () => {
-          const dom = _domSentiment(d.sentiment);
-          if (dom === 'positive') return '#5DAF7818';
-          if (dom === 'negative') return '#C4707018';
-          return d.color + '15';
-        })
-        .attr('stroke', () => {
-          const dom = _domSentiment(d.sentiment);
-          const base = dom === 'positive' ? '#5DAF78' : dom === 'negative' ? '#C47070' : d.color;
-          return base + (d.count > 0 ? '99' : '33');
-        })
-        .attr('stroke-width', 1.5);
-      sel.select('text:first-of-type')
-        .attr('fill', d.color + (d.count > 0 ? 'ee' : '44'));
-      sel.select('.node-count')
-        .text(d.count > 0 ? d.count : '')
-        .attr('fill', d.count > 0 ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0)');
+        .attr('fill', fill)
+        .attr('stroke', stroke)
+        .attr('stroke-width', selected ? 4 : 2.5);
+
+      sel.select('.node-lbl')
+        .attr('fill', selected ? d.color : this._labelColor())
+        .attr('font-weight', selected ? '700' : '500');
+
+      sel.select('.node-count-lbl')
+        .text(d.count > 0 ? `${d.count} actions` : '')
+        .attr('fill', d.count > 0 ? (this._isLight() ? '#888888' : 'rgba(255,255,255,0.4)') : 'transparent');
     }
 
     _highlightNode(d) {
-      /* Reset all nodes and edges */
       this._resetHighlight();
-      /* Highlight selected node */
-      const d3 = this.d3;
-      this._nodeEl.filter(n => n.id === d.id).select('circle')
-        .attr('stroke', '#ffffff').attr('stroke-width', 3);
-      /* Highlight connected edges */
+      /* Selected node — pink stroke */
+      this._nodeEl.filter(n => n.id === d.id).call(sel => this._styleNode(sel, d, true));
+      /* Edges connected → blue; others → dim */
       this._linkEl
         .attr('stroke', e => {
-          const connected = e.source.id === d.id || e.target.id === d.id;
-          if (!connected) return e.rel === 'counter' ? '#C4708A22' : '#ffffff11';
-          return e.rel === 'counter' ? '#C4708Acc' : d.color + 'cc';
+          const hit = e.source.id === d.id || e.target.id === d.id;
+          return hit ? this._edgeActive(e) : (this._isLight() ? '#DDDDDD' : 'rgba(255,255,255,0.06)');
         })
-        .attr('stroke-width', e =>
-          (e.source.id === d.id || e.target.id === d.id) ? 2.5 : 1
-        )
+        .attr('stroke-width', e => (e.source.id === d.id || e.target.id === d.id) ? 3 : 1)
         .attr('marker-end', e => {
-          const connected = e.source.id === d.id || e.target.id === d.id;
-          return `url(#arr-${e.rel}${connected ? '-active' : ''})`;
+          const hit = e.source.id === d.id || e.target.id === d.id;
+          return `url(#arr-${e.rel === 'counter' ? 'cnt' : 'cas'}${hit ? '-a' : ''})`;
         });
     }
 
     _resetHighlight() {
       if (!this._nodeEl || !this._linkEl) return;
-      this._nodeEl.each((d, i, nodes) => {
-        this._styleNode(this.d3.select(nodes[i]), d);
-      });
+      this._nodeEl.each((d, i, nodes) => this._styleNode(this.d3.select(nodes[i]), d, false));
       this._linkEl
-        .attr('stroke', d => d.active
-          ? (d.rel === 'counter' ? '#C4708A88' : '#ffffff44')
-          : (d.rel === 'counter' ? '#C4708A22' : '#ffffff11'))
-        .attr('stroke-width', d => d.active ? Math.max(1.5, d.weight) : 1)
-        .attr('marker-end', d => `url(#arr-${d.rel}${d.active ? '-active' : ''})`);
-      this._linkLbl.attr('fill', '#333333');
+        .attr('stroke', d => d.active ? this._edgeActive(d) : this._edgeDefault(d))
+        .attr('stroke-width', d => d.active ? Math.max(2, d.weight) : 1.5)
+        .attr('marker-end', d => `url(#arr-${d.rel === 'counter' ? 'cnt' : 'cas'}${d.active ? '-a' : ''})`);
+      if (this._linkLblEl) this._linkLblEl.attr('fill', this._edgeLabelColor());
     }
 
-    /* ── Node detail panel (like MiroFish's detail panel) ── */
+    /* ── Node detail panel — top-right floating (MiroFish) ── */
     _showDetail(d) {
       const el = $('graph-node-detail');
       if (!el) return;
-
       const sentRows = Object.entries(d.sentiment)
         .sort((a, b) => b[1] - a[1]).slice(0, 3)
         .map(([k, v]) => `<div class="gnd-sent-row gnd-sent--${k}">
           <span>${k}</span><span>${(v * 100).toFixed(0)}%</span>
         </div>`).join('');
-
       const topAct = d.topAction ? actionMeta(d.topAction) : null;
-
       el.innerHTML = `
         <div class="gnd-header">
-          <div class="gnd-avatar" style="background:${d.color}22;color:${d.color};border-color:${d.color}44">${d.short}</div>
+          <div class="gnd-avatar" style="background:${d.color}22;color:${d.color};border-color:${d.color}55">${d.short}</div>
           <div class="gnd-meta">
             <div class="gnd-name">${d.label}</div>
-            <div class="gnd-count">${d.count} actions</div>
+            <div class="gnd-count">${d.count} actions recorded</div>
           </div>
           <button class="gnd-close" id="gnd-close">×</button>
         </div>
-        ${sentRows ? `<div class="gnd-section">
-          <div class="gnd-section-label">Sentiment Split</div>
-          ${sentRows}
-        </div>` : ''}
-        ${topAct ? `<div class="gnd-section">
-          <div class="gnd-section-label">Top Action</div>
-          <span class="tl-action-badge ${topAct.cls}">${topAct.label}</span>
-        </div>` : ''}
+        ${sentRows ? `<div class="gnd-section"><div class="gnd-section-label">Sentiment split</div>${sentRows}</div>` : ''}
+        ${topAct ? `<div class="gnd-section"><div class="gnd-section-label">Top action</div><span class="tl-action-badge ${topAct.cls}">${topAct.label}</span></div>` : ''}
+        ${!sentRows && !topAct ? '<div style="font-size:10px;color:var(--text-muted);padding:8px 0">Run a simulation to see agent data.</div>' : ''}
       `;
       el.style.display = 'block';
-      $('gnd-close')?.addEventListener('click', (e) => {
+      $('gnd-close')?.addEventListener('click', e => {
         e.stopPropagation();
         this._selectedId = null;
         this._hideDetail();
@@ -419,7 +427,7 @@
       this._selectedId = null;
       this._hideDetail();
       this.nodeData.forEach(n => {
-        n.count = 0; n.r = 22; n.lastActive = 0;
+        n.count = 0; n.r = this.BASE_R; n.lastActive = 0;
         n.sentiment = {}; n.topAction = null;
       });
       this.edgeData.forEach(e => { e.active = false; e.weight = 1; });
@@ -435,51 +443,49 @@
       if (this._resizeObs) this._resizeObs.disconnect();
     }
 
-    /* Called on each poll result during run */
+    /* Called on each poll result */
     update(recentActions, cascadeRound) {
       const now = Date.now();
-
       recentActions.forEach(a => {
         const k = archetypeKey(a.archetype);
         const n = this.nodeData.find(x => x.id === k);
         if (!n) return;
         n.count++;
         n.lastActive = now;
-        n.r = Math.min(44, 22 + Math.sqrt(n.count) * 0.7);
+        /* Grow radius gently — max 22px (MiroFish-like) */
+        n.r = Math.min(22, this.BASE_R + Math.sqrt(n.count) * 1.2);
         if (a.sentiment) {
-          const total = n.count;
-          n.sentiment[a.sentiment] = ((n.sentiment[a.sentiment] || 0) * (total - 1) + 1) / total;
+          const t = n.count;
+          n.sentiment[a.sentiment] = ((n.sentiment[a.sentiment] || 0) * (t - 1) + 1) / t;
         }
         if (a.action) n.topAction = a.action;
       });
 
-      /* Activate cascade edges by round */
       if (cascadeRound >= 2) {
         ['emotional_reactor', 'amplifier'].forEach(src => {
           this.edgeData
             .filter(e => (e.source.id || e.source) === src && e.rel === 'cascade')
-            .forEach(e => { e.active = true; e.weight = Math.min(3.5, e.weight + 0.5); });
+            .forEach(e => { e.active = true; e.weight = Math.min(4, e.weight + 0.5); });
         });
       }
       if (cascadeRound >= 3) {
         this.edgeData
           .filter(e => (e.target.id || e.target) === 'institutional')
-          .forEach(e => { e.active = true; e.weight = Math.min(3.5, e.weight + 0.3); });
+          .forEach(e => { e.active = true; e.weight = Math.min(4, e.weight + 0.3); });
       }
 
       this._applyVisualUpdates();
       if (this._sim) this._sim.alpha(0.05).restart();
     }
 
-    /* Called when simulation completes */
     finalize(result) {
       this._running = false;
       const breakdown = result.archetype_breakdown || {};
       Object.entries(breakdown).forEach(([k, v]) => {
         const n = this.nodeData.find(x => x.id === k);
         if (!n) return;
-        n.sentiment  = v.sentiment  || {};
-        n.topAction  = v.top_action || null;
+        n.sentiment = v.sentiment  || {};
+        n.topAction = v.top_action || null;
       });
       this._applyVisualUpdates();
     }
@@ -487,29 +493,15 @@
     _applyVisualUpdates() {
       if (!this._nodeEl || !this._linkEl) return;
       const d3 = this.d3;
-
-      /* Update node visuals */
-      this._nodeEl.each((d, i, nodes) => {
-        this._styleNode(d3.select(nodes[i]), d);
-      });
-
-      /* Update edge visuals */
+      this._nodeEl.each((d, i, nodes) => this._styleNode(d3.select(nodes[i]), d, false));
       this._linkEl
-        .attr('stroke', d => d.active
-          ? (d.rel === 'counter' ? '#C4708A88' : '#ffffff44')
-          : (d.rel === 'counter' ? '#C4708A22' : '#ffffff11'))
-        .attr('stroke-width', d => d.active ? Math.max(1.5, d.weight) : 1)
-        .attr('stroke-dasharray', d => {
-          if (d.active) return d.rel === 'counter' ? '3 4' : '5 3';
-          return d.rel === 'counter' ? '2 6' : '3 6';
-        })
-        .attr('marker-end', d => `url(#arr-${d.rel}${d.active ? '-active' : ''})`);
-
-      this._linkLbl.attr('fill', d => d.active ? '#666666' : '#2a2a2a');
-
-      /* Update force-collide radius */
+        .attr('stroke', d => d.active ? this._edgeActive(d) : this._edgeDefault(d))
+        .attr('stroke-width', d => d.active ? Math.max(2, d.weight) : 1.5)
+        .attr('marker-end', d => `url(#arr-${d.rel === 'counter' ? 'cnt' : 'cas'}${d.active ? '-a' : ''})`);
+      if (this._linkLblEl) this._linkLblEl.attr('fill', this._edgeLabelColor());
+      /* Update link distance based on activity */
       if (this._sim) {
-        this._sim.force('collide', d3.forceCollide(d => d.r + 10));
+        this._sim.force('collide', d3.forceCollide(d => d.r + 40));
       }
     }
   }
@@ -519,7 +511,7 @@
     return e ? e[0] : null;
   }
 
-  /* ── Legend ── */
+  /* ── Legend (bottom bar — kept for compatibility) ── */
   function buildGraphLegend() {
     const el = $('graph-legend');
     if (!el) return;
@@ -725,6 +717,8 @@
   /* ════════════════════════════════════════════════════════════════════════
      RUN STATE
      ════════════════════════════════════════════════════════════════════════ */
+  let _currentSimId = null;
+
   function setRunning(running, label) {
     const btn = $('run-btn');
     if (!btn) return;
@@ -732,6 +726,27 @@
     btn.textContent = label || (running ? 'Running…' : '→ Run Simulation');
     const prog = $('run-progress');
     if (prog) prog.style.display = running ? 'block' : 'none';
+    /* Show / hide stop button */
+    let stopBtn = $('stop-btn');
+    if (!stopBtn && running) {
+      stopBtn = document.createElement('button');
+      stopBtn.id = 'stop-btn';
+      stopBtn.type = 'button';
+      stopBtn.className = 'btn btn--danger btn--sm';
+      stopBtn.style.marginTop = '8px';
+      stopBtn.style.width = '100%';
+      stopBtn.textContent = '■ Stop Simulation';
+      btn.parentNode.insertBefore(stopBtn, btn.nextSibling);
+      stopBtn.addEventListener('click', async () => {
+        if (!_currentSimId) return;
+        stopBtn.disabled = true;
+        stopBtn.textContent = 'Stopping…';
+        try {
+          await Api.stopSimulation(_currentSimId);
+        } catch (_) { /* ignore — backend will eventually timeout */ }
+      });
+    }
+    if (stopBtn) stopBtn.style.display = running ? 'block' : 'none';
   }
 
   function setGraphStatus(text, round) {
@@ -782,9 +797,24 @@
     const breakdown = res.action_breakdown || {};
     const round     = Number(res.cascade_rounds || 1);
 
+    const stage         = res.stage || '';
+    const runnerStatus  = res.runner_status || 'running';
+    const stageLabel    = {
+      building_agents: 'Building agents',
+      round_1:         'Round 1 · individual reactions',
+      round_2:         'Round 2 · cascade',
+      round_3:         'Round 3 · institutional',
+      delayed_factors: 'Applying external factors',
+      aggregating:     'Aggregating results',
+      done:            'Complete',
+      error:           'Error',
+      timeout:         'Timed out',
+      stopped:         'Stopped',
+    }[stage] || (stage || 'Deploying agents');
+
     /* Feed graph */
     if (agentGraph) agentGraph.update(actions, round);
-    setGraphStatus(`Running · ${processed}/${total} agents`, round);
+    setGraphStatus(`${runnerStatus === 'cancelling' ? 'Stopping' : 'Running'} · ${stageLabel}`, round);
 
     /* Count actions per archetype */
     const archCounts = {};
@@ -829,8 +859,9 @@
           <div class="sim-progress-track"><div class="sim-progress-fill" style="width:${progress}%"></div></div>
           <span class="sim-progress-pct">${progress}%</span>
         </div>
-        <div class="sim-status-dot ${progress >= 100 ? 'done' : 'running'}"></div>
+        <div class="sim-status-dot ${runnerStatus === 'cancelling' ? 'stopping' : (progress >= 100 ? 'done' : 'running')}"></div>
       </div>
+      <div class="sim-stage-label">${esc(stageLabel)}</div>
 
       <!-- Archetype activity -->
       <div class="arch-chips-row">${archChips}</div>
@@ -1100,25 +1131,42 @@
   async function pollOnce(id) {
     try {
       const res = await Api.getSimulation(id);
+      pollFailures = 0;
       if (res.error)               { renderFailed('Simulation not found.'); return true; }
       if (res.status === 'complete') { renderComplete(res); loadHistory(); return true; }
       if (res.status === 'failed')   { renderFailed('Swarm run failed.'); return true; }
       renderRunning(res);
       return false;
     } catch {
-      renderFailed('Polling error — check server.');
-      return true;
+      pollFailures += 1;
+      if (pollFailures >= 5) {
+        renderFailed('Polling failed repeatedly — check server/network.');
+        return true;
+      }
+      setGraphStatus(`Polling retry ${pollFailures}/5…`, null);
+      return false;
     }
   }
 
   async function pollSimulation(id) {
-    if (pollTimer) clearInterval(pollTimer);
-    const done = await pollOnce(id);
-    if (done) { setRunning(false); return; }
-    pollTimer = setInterval(async () => {
+    if (pollTimer) clearTimeout(pollTimer);
+    pollFailures = 0;
+
+    const loop = async () => {
       const finished = await pollOnce(id);
-      if (finished) { clearInterval(pollTimer); setRunning(false); }
-    }, 2000);
+      if (finished) {
+        if (pollTimer) clearTimeout(pollTimer);
+        setRunning(false);
+        return;
+      }
+      // Backoff on transient poll failures; keep normal 2s cadence otherwise.
+      const delayMs = pollFailures
+        ? Math.min(10000, 1500 * Math.pow(2, pollFailures - 1))
+        : 2000;
+      pollTimer = setTimeout(loop, delayMs);
+    };
+
+    await loop();
   }
 
   /* ════════════════════════════════════════════════════════════════════════
@@ -1147,6 +1195,7 @@
       const irisLocation = customTarget?.label || zone;
       loadIrisAndForecast(irisLocation, selectedSector, news_item, body.n_agents);
       const res = await Api.postSimulate(body);
+      _currentSimId = res.simulation_id;
       setRunning(true, `Running 0/${body.n_agents}…`);
       renderRunning(res);
       await pollSimulation(res.simulation_id);

@@ -9,6 +9,7 @@ from backend.config import settings
 logger = logging.getLogger(__name__)
 
 _watsonx_available = False
+_model_cache = None
 
 
 def _try_import_watsonx():
@@ -23,15 +24,22 @@ def _try_import_watsonx():
 
 
 def _get_model():
+    global _model_cache
+    if _model_cache is not None:
+        return _model_cache
+
     Model = _try_import_watsonx()
     if not Model or not settings.watsonx_api_key:
         return None
-    return Model(
+
+    _model_cache = Model(
         model_id=settings.watsonx_model_id,
         credentials={"apikey": settings.watsonx_api_key, "url": settings.watsonx_url},
         project_id=settings.watsonx_project_id,
-        params={"max_new_tokens": 512, "temperature": 0.3},
+        # Keep responses compact to reduce latency for swarm agent calls.
+        params={"max_new_tokens": 220, "temperature": 0.3},
     )
+    return _model_cache
 
 
 SYSTEM_DISTRICT_PROMPT = """
@@ -188,7 +196,10 @@ Return ONLY this JSON with no other text:
             return _mock_zone_score(zone_id)
 
         loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(None, lambda: model.generate_text(prompt))
+        response = await asyncio.wait_for(
+            loop.run_in_executor(None, lambda: model.generate_text(prompt)),
+            timeout=max(5, settings.watsonx_agent_timeout_seconds),
+        )
         clean = response.strip().replace("```json", "").replace("```", "").strip()
         result = json.loads(clean)
         logger.info(f"WatsonX scored zone {zone_id}: sentiment={result.get('sentiment_score', 0):.2f}")
@@ -246,6 +257,13 @@ How do you react? Return ONLY this JSON with no other text:
         result["network_size"] = agent_profile.get("network_size", 50)
         result["reaction_delay_minutes"] = agent_profile.get("reaction_delay_minutes", 60)
         return result
+    except asyncio.TimeoutError:
+        logger.warning(
+            "Agent %s WatsonX timeout after %ss — using mock fallback",
+            agent_profile.get("agent_id"),
+            settings.watsonx_agent_timeout_seconds,
+        )
+        return _mock_agent_react(agent_profile, social_context=social_context)
     except Exception as e:
         logger.warning(f"Agent {agent_profile['agent_id']} WatsonX call failed: {e}")
         return _mock_agent_react(agent_profile, social_context=social_context)

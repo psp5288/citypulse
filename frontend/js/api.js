@@ -36,6 +36,35 @@
     return res.json();
   }
 
+  /**
+   * GET with exponential back-off retry (MiroFish requestWithRetry pattern).
+   * Retries on network errors and 5xx responses; does NOT retry 4xx.
+   *
+   * @param {string} path
+   * @param {object} opts
+   * @param {number} [opts.timeoutMs=30000]
+   * @param {number} [opts.retries=3]       max additional attempts after first failure
+   * @param {number} [opts.baseDelayMs=800] initial back-off delay
+   */
+  async function retryGet(path, { timeoutMs = 30000, retries = 3, baseDelayMs = 800 } = {}) {
+    let lastErr;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        return await get(path, timeoutMs);
+      } catch (err) {
+        lastErr = err;
+        /* Don't retry client errors (404, 422, etc.) */
+        const status = err.message.match(/→ (\d+)/)?.[1];
+        if (status && Number(status) >= 400 && Number(status) < 500) throw err;
+        if (attempt < retries) {
+          const delay = baseDelayMs * Math.pow(2, attempt);
+          await new Promise(r => setTimeout(r, delay));
+        }
+      }
+    }
+    throw lastErr;
+  }
+
   /* Convenience wrappers */
   const api = {
     getDistricts:         () => get('/api/districts'),
@@ -43,7 +72,13 @@
     getAlerts:            (s='open') => get(`/api/alerts?status=${s}&limit=99`),
     getAnalytics:         (r='1h') => get(`/api/analytics?range=${r}`),
     postSimulate:         (body) => post('/api/simulate', body, 120000),
-    getSimulation:        (id) => get(`/api/simulate/${id}`, 30000),
+
+    /** Poll a running simulation — retries up to 3× on transient failures. */
+    getSimulation:        (id) => retryGet(`/api/simulate/${id}`, { timeoutMs: 30000 }),
+
+    /** Request graceful stop of a running simulation. */
+    stopSimulation:       (id) => post(`/api/simulate/${id}/stop`, {}, 10000),
+
     getSimulationHistory: (n=20) => get(`/api/simulate/history?limit=${n}`),
     getIrisState:         (location, topic) => get(`/api/iris/state?location=${encodeURIComponent(location)}&topic=${encodeURIComponent(topic)}`),
     getIrisTrend:         (location, topic, buckets=12) => get(`/api/iris/trend?location=${encodeURIComponent(location)}&topic=${encodeURIComponent(topic)}&buckets=${buckets}`),
@@ -60,5 +95,5 @@
       get(`/api/location/intel?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&name=${encodeURIComponent(name)}${force ? '&force=true' : ''}`, 30000),
   };
 
-  global.DevCityApi = { get, post, ...api };
+  global.DevCityApi = { get, post, retryGet, ...api };
 })(typeof window !== 'undefined' ? window : globalThis);

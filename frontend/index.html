@@ -1,12 +1,19 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>DevCity Pulse — Urban Intelligence Platform</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;600;700&display=swap" rel="stylesheet" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/css/main.css" />
+  <script>
+    (function(){
+      var t = localStorage.getItem('cp-theme') || 'dark';
+      document.documentElement.dataset.theme = t;
+    })();
+  </script>
 </head>
 <body class="page-home">
 
@@ -30,6 +37,7 @@
       <span class="dc-clock__date" id="topbar-date"></span>
       <span id="topbar-clock"></span>
     </div>
+    <button class="theme-toggle" id="theme-toggle" title="Toggle light/dark mode">◑</button>
   </header>
 
   <!-- Hero -->
@@ -112,6 +120,13 @@
       if (dt) dt.textContent = now.toLocaleDateString([], { month: 'short', day: 'numeric' });
     }
     tick(); setInterval(tick, 1000);
+
+    document.getElementById('theme-toggle')?.addEventListener('click', function() {
+      const html = document.documentElement;
+      const next = html.dataset.theme === 'dark' ? 'light' : 'dark';
+      html.dataset.theme = next;
+      localStorage.setItem('cp-theme', next);
+    });
   </script>
 </body>
 </html>

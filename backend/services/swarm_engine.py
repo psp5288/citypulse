@@ -26,6 +26,7 @@ from backend.services.postgres_service import get_historical_analogs
 from backend.services.watsonx_service import agent_react
 from backend.services.redis_service import get_zone_score
 from backend.services.postgres_service import save_simulation, update_simulation_status
+from backend.services import run_state
 from backend.core.models import SimulationRequest, SimulationResult
 from backend.config import settings
 
@@ -43,9 +44,44 @@ async def run_batch(
     rumour: str = None,
     social_context: list[str] | None = None,
 ) -> list[dict]:
-    """Run a batch of agents concurrently, optionally with cascade social context."""
-    tasks = [agent_react(a, news_item, rumour, social_context) for a in agents]
-    return await asyncio.gather(*tasks, return_exceptions=False)
+    """
+    Run agent reactions in bounded chunks.
+
+    Important: Round 2/3 can pass hundreds of agents here; unbounded gather can
+    saturate model backends and cause stalls. Chunking keeps throughput stable.
+    """
+    if not agents:
+        return []
+
+    chunk_size = max(1, settings.simulation_batch_size)
+    out: list[dict] = []
+
+    for i in range(0, len(agents), chunk_size):
+        chunk = agents[i : i + chunk_size]
+        tasks = [agent_react(a, news_item, rumour, social_context) for a in chunk]
+        rows = await asyncio.gather(*tasks, return_exceptions=True)
+        for agent, row in zip(chunk, rows):
+            if isinstance(row, Exception):
+                logger.warning(
+                    "[Swarm] agent_react failed for agent_id=%s: %s",
+                    agent.get("agent_id"),
+                    row,
+                )
+                out.append(
+                    {
+                        "agent_id": agent.get("agent_id"),
+                        "archetype": agent.get("archetype", "unknown"),
+                        "sentiment": "neutral",
+                        "action": "ignore",
+                        "intensity": 0.0,
+                        "reasoning": "Fallback response due to processing error.",
+                        "network_size": agent.get("network_size", 50),
+                        "reaction_delay_minutes": agent.get("reaction_delay_minutes", 60),
+                    }
+                )
+            else:
+                out.append(row)
+    return out
 
 
 # ── Social-context builder ────────────────────────────────────────────────────
@@ -199,20 +235,21 @@ def _archetype_breakdown(results: list[dict]) -> dict:
 async def run_swarm(simulation_id: str, request: SimulationRequest):
     """
     Full 3-round cascade swarm simulation.
-    Saves intermediate progress to DB; notifies via WebSocket when done.
+    Saves intermediate progress to DB; updates run-state heartbeat every batch.
+    Respects cancellation flag set by POST /api/simulate/{id}/stop.
     """
     logger.info(f"[Swarm {simulation_id}] Starting: {request.n_agents} agents, zone={request.zone}")
 
     try:
+        run_state.update_run(simulation_id, runner_status="running", stage="building_agents")
+
         iris_vector = await get_iris_state(location=request.zone, topic=request.sector, lookback_hours=24)
         analogs = await get_historical_analogs(request.zone, request.sector, limit=6)
         prior = build_swarm_prior(iris_vector, analogs)
         agents = generate_personality_pool(request.zone, request.n_agents, prior=prior)
 
-        # Build a quick lookup by agent_id for later timeline + virality calculations
         agents_map: dict[int, dict] = {a["agent_id"]: a for a in agents}
 
-        # Separate immediate vs delayed external factors
         rumour_at_start: str | None = None
         delayed_factors = []
         for factor in request.external_factors:
@@ -228,7 +265,16 @@ async def run_swarm(simulation_id: str, request: SimulationRequest):
 
         # ── ROUND 1: All agents react to raw news ────────────────────────────
         logger.info(f"[Swarm {simulation_id}] Round 1 — {len(agents)} agents")
+        run_state.update_run(simulation_id, stage="round_1", total=len(agents))
+
         for i in range(0, len(agents), batch_size):
+            # ── Cancellation check ────────────────────────────────────────────
+            if run_state.is_cancelled(simulation_id):
+                logger.info(f"[Swarm {simulation_id}] Cancelled during Round 1 batch {i}")
+                await update_simulation_status(simulation_id, "failed")
+                run_state.update_run(simulation_id, runner_status="cancelled", stage="stopped")
+                return
+
             batch = agents[i : i + batch_size]
             batch_results = await run_batch(batch, request.news_item, rumour_at_start)
             all_results.extend(batch_results)
@@ -249,15 +295,23 @@ async def run_swarm(simulation_id: str, request: SimulationRequest):
                 recent_actions = recent_actions[-150:]
 
             processed = min(i + batch_size, len(agents))
+            run_state.update_run(simulation_id, processed=processed,
+                                 progress_pct=round(processed / len(agents) * 0.6, 3))
             await _save_running(simulation_id, request, processed, len(agents),
                                 action_counts, recent_actions, prior)
             logger.info(f"[Swarm {simulation_id}] R1 progress {processed}/{len(agents)}")
 
         # ── ROUND 2: Cascade — passive_consumer + skeptic see social signal ──
+        if run_state.is_cancelled(simulation_id):
+            await update_simulation_status(simulation_id, "failed")
+            run_state.update_run(simulation_id, runner_status="cancelled", stage="stopped")
+            return
+
         social_ctx = _build_social_context(all_results, top_n_pct=0.12)
         cascade_r2 = [a for a in agents if a["archetype"] in ("passive_consumer", "skeptic")]
         if cascade_r2 and social_ctx:
-            logger.info(f"[Swarm {simulation_id}] Round 2 — {len(cascade_r2)} passive/skeptic agents with {len(social_ctx)} social signals")
+            logger.info(f"[Swarm {simulation_id}] Round 2 — {len(cascade_r2)} agents")
+            run_state.update_run(simulation_id, stage="round_2", progress_pct=0.65)
             r2_results = await run_batch(cascade_r2, request.news_item, rumour_at_start, social_ctx)
             r2_ids = {r["agent_id"] for r in r2_results}
             all_results = [r for r in all_results if r["agent_id"] not in r2_ids] + r2_results
@@ -273,10 +327,16 @@ async def run_swarm(simulation_id: str, request: SimulationRequest):
                 recent_actions = recent_actions[-200:]
 
         # ── ROUND 3: Institutional agents respond to full social noise ────────
+        if run_state.is_cancelled(simulation_id):
+            await update_simulation_status(simulation_id, "failed")
+            run_state.update_run(simulation_id, runner_status="cancelled", stage="stopped")
+            return
+
         full_ctx = _build_full_context(all_results)
         cascade_r3 = [a for a in agents if a["archetype"] == "institutional"]
         if cascade_r3 and full_ctx:
             logger.info(f"[Swarm {simulation_id}] Round 3 — {len(cascade_r3)} institutional agents")
+            run_state.update_run(simulation_id, stage="round_3", progress_pct=0.82)
             r3_results = await run_batch(cascade_r3, request.news_item, rumour_at_start, full_ctx)
             r3_ids = {r["agent_id"] for r in r3_results}
             all_results = [r for r in all_results if r["agent_id"] not in r3_ids] + r3_results
@@ -293,8 +353,9 @@ async def run_swarm(simulation_id: str, request: SimulationRequest):
 
         cascade_rounds_ran = 1 + (1 if cascade_r2 and social_ctx else 0) + (1 if cascade_r3 and full_ctx else 0)
 
-        # ── Delayed external factors (existing mechanic, unchanged) ──────────
+        # ── Delayed external factors ──────────────────────────────────────────
         if delayed_factors:
+            run_state.update_run(simulation_id, stage="delayed_factors", progress_pct=0.90)
             for factor in delayed_factors:
                 second_wave = agents[: int(len(agents) * 0.3)]
                 wave_results = await run_batch(second_wave, request.news_item, factor.content)
@@ -303,6 +364,7 @@ async def run_swarm(simulation_id: str, request: SimulationRequest):
                 all_results.extend(wave_results)
 
         # ── Final aggregation ─────────────────────────────────────────────────
+        run_state.update_run(simulation_id, stage="aggregating", progress_pct=0.95)
         result = aggregate_results(
             simulation_id, request, all_results, agents, agents_map,
             rumour_present=rumour_at_start is not None,
@@ -320,7 +382,6 @@ async def run_swarm(simulation_id: str, request: SimulationRequest):
             "negative": result.predicted_sentiment.get("negative", 0) if result.predicted_sentiment else 0,
         }
 
-        # vs-real-time accuracy
         real_score = await get_zone_score(request.zone)
         if real_score:
             real_negative = 1.0 - real_score["sentiment_score"]
@@ -337,14 +398,21 @@ async def run_swarm(simulation_id: str, request: SimulationRequest):
         result.completed_at = datetime.utcnow()
         result.status = "complete"
         await save_simulation(result)
+        run_state.update_run(simulation_id, runner_status="completed", stage="done", progress_pct=1.0)
         logger.info(
             f"[Swarm {simulation_id}] Complete — virality={result.predicted_virality:.3f} "
             f"coalition={result.coalition_dynamic} rounds={cascade_rounds_ran}"
         )
 
+    except asyncio.CancelledError:
+        logger.info(f"[Swarm {simulation_id}] CancelledError received")
+        await update_simulation_status(simulation_id, "failed")
+        run_state.update_run(simulation_id, runner_status="cancelled", stage="stopped")
+
     except Exception as e:
         logger.error(f"[Swarm {simulation_id}] Failed: {e}", exc_info=True)
         await update_simulation_status(simulation_id, "failed")
+        run_state.update_run(simulation_id, runner_status="failed", stage="error")
 
 
 # ── Progress save helper ──────────────────────────────────────────────────────
