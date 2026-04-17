@@ -182,8 +182,13 @@ async def health():
 
 @app.get("/api/debug-health")
 async def debug_health():
-    import ssl, re
-    results = {}
+    import ssl, re, os
+    results = {
+        "env_database_url": ("SET" if os.environ.get("DATABASE_URL") else "MISSING"),
+        "env_redis_url": ("SET" if os.environ.get("REDIS_URL") else "MISSING"),
+        "config_db_host": settings.database_url.split("@")[-1].split("/")[0] if "@" in settings.database_url else "localhost",
+        "config_redis_host": settings.redis_url.split("@")[-1] if "@" in settings.redis_url else settings.redis_url,
+    }
     # Test Postgres
     try:
         import asyncpg
