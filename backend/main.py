@@ -183,16 +183,18 @@ async def health():
 @app.get("/api/debug-health")
 async def debug_health():
     import ssl, re, os
+    db_url = os.environ.get("DATABASE_URL") or settings.database_url
+    redis_url = os.environ.get("REDIS_URL") or settings.redis_url
     results = {
         "env_database_url": ("SET" if os.environ.get("DATABASE_URL") else "MISSING"),
         "env_redis_url": ("SET" if os.environ.get("REDIS_URL") else "MISSING"),
-        "config_db_host": settings.database_url.split("@")[-1].split("/")[0] if "@" in settings.database_url else "localhost",
-        "config_redis_host": settings.redis_url.split("@")[-1] if "@" in settings.redis_url else settings.redis_url,
+        "config_db_host": db_url.split("@")[-1].split("/")[0] if "@" in db_url else db_url,
+        "config_redis_host": redis_url.split("@")[-1] if "@" in redis_url else redis_url,
     }
     # Test Postgres
     try:
         import asyncpg
-        dsn = settings.database_url
+        dsn = db_url
         ssl_ctx = None
         if "sslmode=require" in dsn or "sslmode=verify" in dsn:
             dsn = re.sub(r"[?&]sslmode=[^&]*", "", dsn).rstrip("?")
@@ -208,14 +210,13 @@ async def debug_health():
     # Test Redis
     try:
         import redis.asyncio as aioredis
-        url = settings.redis_url
         ssl_kwargs = {}
-        if url.startswith("rediss://"):
+        if redis_url.startswith("rediss://"):
             ctx = ssl.create_default_context()
             ctx.check_hostname = False
             ctx.verify_mode = ssl.CERT_NONE
             ssl_kwargs["ssl"] = ctx
-        r = aioredis.from_url(url, decode_responses=True, **ssl_kwargs, socket_connect_timeout=10)
+        r = aioredis.from_url(redis_url, decode_responses=True, **ssl_kwargs, socket_connect_timeout=10)
         await r.ping()
         await r.aclose()
         results["redis"] = "ok"

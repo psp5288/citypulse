@@ -18,7 +18,8 @@ DISTRICT_TTL = 65
 
 async def init_redis():
     global _redis
-    url = settings.redis_url
+    import os
+    url = os.environ.get("REDIS_URL") or settings.redis_url
     # Upstash uses rediss:// (TLS) — disable cert verification for managed cloud Redis
     ssl_kwargs = {}
     if url.startswith("rediss://"):

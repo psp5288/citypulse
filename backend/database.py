@@ -139,9 +139,9 @@ CREATE INDEX IF NOT EXISTS idx_oracle_forecasts_loc_topic_created_at ON oracle_f
 
 async def init_db():
     global _pool
-    import ssl
-    # Strip libpq-style sslmode param — asyncpg handles SSL via ssl= kwarg
-    dsn = settings.database_url
+    import ssl, os
+    # Read directly from env to bypass any pydantic-settings caching issues
+    dsn = os.environ.get("DATABASE_URL") or settings.database_url
     ssl_ctx: ssl.SSLContext | bool = False
     if "sslmode=require" in dsn or "sslmode=verify" in dsn or dsn.startswith("postgresql+ssl"):
         import re
