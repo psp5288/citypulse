@@ -58,13 +58,26 @@ async def _postgres_health() -> bool:
         return False
 
 
+def _is_serverless() -> bool:
+    import os
+    return bool(os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await init_db()
-    await init_redis()
+    try:
+        await init_db()
+    except Exception as e:
+        logger.warning("PostgreSQL unavailable at startup (will retry per-request): %s", e)
+    try:
+        await init_redis()
+    except Exception as e:
+        logger.warning("Redis unavailable at startup (will retry per-request): %s", e)
     app.state.bg_tasks = []
-    app.state.bg_tasks.append(asyncio.create_task(run_city_pulse_loop(), name="citypulse-loop"))
-    app.state.bg_tasks.append(asyncio.create_task(start_kafka_consumer(), name="kafka-consumer"))
+    # Background tasks require a persistent runtime — skip in serverless environments
+    if not _is_serverless():
+        app.state.bg_tasks.append(asyncio.create_task(run_city_pulse_loop(), name="citypulse-loop"))
+        app.state.bg_tasks.append(asyncio.create_task(start_kafka_consumer(), name="kafka-consumer"))
     logger.info("City Pulse API started (WatsonX + district loop + Kafka stub)")
     yield
     for t in getattr(app.state, "bg_tasks", []):
@@ -202,6 +215,7 @@ async def serve_analytics():
     return FileResponse("frontend/analytics.html")
 
 
-app.mount("/assets", StaticFiles(directory="frontend/assets"), name="assets")
-app.mount("/css", StaticFiles(directory="frontend/css"), name="css")
-app.mount("/js", StaticFiles(directory="frontend/js"), name="js")
+import os as _os
+for _dir, _name in [("frontend/assets", "assets"), ("frontend/css", "css"), ("frontend/js", "js")]:
+    if _os.path.isdir(_dir):
+        app.mount(f"/{_name}", StaticFiles(directory=_dir), name=_name)
