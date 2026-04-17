@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Oracle Analytics — CityPulse</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;700&display=swap" rel="stylesheet" />
+  <script>(function(){ var t=localStorage.getItem('cp-theme')||'dark'; document.documentElement.dataset.theme=t; })();</script>
+  <link rel="stylesheet" href="/css/main.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <div class="dc-shell oa-shell">
+    <header class="dc-topbar">
+      <div class="dc-brand">
+        <div class="dc-brand__icon">CP</div>
+        <div>
+          <div class="dc-brand__text">CityPulse</div>
+          <div class="dc-brand__sub">Oracle Analytics</div>
+        </div>
+      </div>
+      <nav class="dc-nav">
+        <a href="/">Home</a>
+        <a href="/dashboard">Iris</a>
+        <a href="/simulator">The Oracle</a>
+        <a href="/analytics" class="active">Analytics</a>
+      </nav>
+      <div class="dc-topbar-spacer"></div>
+      <button class="theme-toggle" id="theme-toggle" title="Toggle light/dark mode">◑</button>
+    </header>
+
+    <section class="oa-toolbar">
+      <div class="oa-toolbar__left">
+        <label>Days
+          <select id="oa-days">
+            <option value="7">7</option>
+            <option value="14" selected>14</option>
+            <option value="30">30</option>
+            <option value="60">60</option>
+          </select>
+        </label>
+        <label>Status
+          <select id="oa-status">
+            <option value="complete" selected>complete</option>
+            <option value="">all</option>
+            <option value="running">running</option>
+            <option value="failed">failed</option>
+            <option value="cancelled">cancelled</option>
+          </select>
+        </label>
+        <label>Zone
+          <input id="oa-zone" placeholder="all zones" />
+        </label>
+        <label>Sector
+          <input id="oa-sector" placeholder="all sectors" />
+        </label>
+      </div>
+      <div class="oa-toolbar__right">
+        <button class="btn btn--primary btn--sm" id="oa-compare-btn">Compare Selected</button>
+      </div>
+    </section>
+
+    <main class="oa-bento">
+      <section class="oa-card oa-kpis">
+        <div class="oa-kpi"><span>Runs</span><strong id="oa-kpi-runs">0</strong></div>
+        <div class="oa-kpi"><span>Avg Risk</span><strong id="oa-kpi-avg-risk">0%</strong></div>
+        <div class="oa-kpi"><span>Avg Confidence</span><strong id="oa-kpi-avg-conf">0%</strong></div>
+        <div class="oa-kpi"><span>Avg Virality</span><strong id="oa-kpi-avg-virality">0%</strong></div>
+        <div class="oa-kpi"><span>Critical Runs</span><strong id="oa-kpi-critical">0</strong></div>
+      </section>
+
+      <section class="oa-card oa-final" id="oa-final-insight"></section>
+      <section class="oa-card oa-timeline"><h3 title="Forecast risk trajectory with short-term smoothing.">Prediction Risk Timeline</h3><canvas id="oa-chart-timeline"></canvas></section>
+      <section class="oa-card oa-tierdist"><h3 title="Share of NOMINAL, WATCH, ELEVATED, and CRITICAL outcomes.">Tier Distribution</h3><canvas id="oa-chart-tier"></canvas></section>
+      <section class="oa-card oa-scatter"><h3 title="Confidence-quality relationship across runs.">Confidence vs Risk</h3><canvas id="oa-chart-scatter"></canvas></section>
+      <section class="oa-card oa-sector"><h3 title="Average risk by sector/scenario.">Sector Impact</h3><canvas id="oa-chart-sector"></canvas></section>
+      <section class="oa-card oa-driver"><h3 title="Most frequent high-risk factors in recent runs.">Driver Contribution</h3><canvas id="oa-chart-driver"></canvas></section>
+      <section class="oa-card oa-funnel"><h3 title="Conversion from started runs to actionable/confirmed outcomes.">Run Funnel</h3><canvas id="oa-chart-funnel"></canvas></section>
+      <section class="oa-card oa-leadtime"><h3 title="Time from run start to completion as an operational lead-time proxy.">Lead-Time Trend</h3><canvas id="oa-chart-leadtime"></canvas></section>
+      <section class="oa-card oa-compare"><h3 title="Overlay selected runs to compare risk posture quickly.">Compare Runs Overlay</h3><canvas id="oa-chart-compare"></canvas></section>
+
+      <section class="oa-card oa-history">
+        <h3>Oracle Run History</h3>
+        <div class="oa-table-wrap">
+          <table class="oa-table">
+            <thead>
+              <tr><th></th><th>ID</th><th>Zone</th><th>Sector</th><th>Status</th><th>Risk</th><th>Confidence</th><th>Tier</th><th>Created</th></tr>
+            </thead>
+            <tbody id="oa-history-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="oa-card oa-chat">
+        <h3>Oracle Chatbot</h3>
+        <div class="oa-chat-log" id="oa-chat-log">
+          <div class="oa-chat-empty">Ask about trends, top-risk zones, sector impact, or action recommendations.</div>
+        </div>
+        <div class="oa-chat-input-row">
+          <input id="oa-chat-input" placeholder="Ask: Which zones are trending risky this week?" />
+          <button class="btn btn--primary btn--sm" id="oa-chat-send">Send</button>
+        </div>
+        <div class="oa-chat-evidence" id="oa-chat-evidence">
+          <div class="oa-chat-empty">Evidence from recent runs will appear here.</div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script src="/js/api.js"></script>
+  <script src="/js/analytics_bento.js"></script>
+</body>
+</html>
