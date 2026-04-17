@@ -180,6 +180,45 @@ async def health():
     }
 
 
+@app.get("/api/debug-health")
+async def debug_health():
+    import ssl, re
+    results = {}
+    # Test Postgres
+    try:
+        import asyncpg
+        dsn = settings.database_url
+        ssl_ctx = None
+        if "sslmode=require" in dsn or "sslmode=verify" in dsn:
+            dsn = re.sub(r"[?&]sslmode=[^&]*", "", dsn).rstrip("?")
+            ssl_ctx = ssl.create_default_context()
+            ssl_ctx.check_hostname = False
+            ssl_ctx.verify_mode = ssl.CERT_NONE
+        pool = await asyncpg.create_pool(dsn, min_size=1, max_size=1, ssl=ssl_ctx, timeout=10)
+        await pool.fetchval("SELECT 1")
+        await pool.close()
+        results["postgres"] = "ok"
+    except Exception as e:
+        results["postgres"] = str(e)
+    # Test Redis
+    try:
+        import redis.asyncio as aioredis
+        url = settings.redis_url
+        ssl_kwargs = {}
+        if url.startswith("rediss://"):
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            ssl_kwargs["ssl"] = ctx
+        r = aioredis.from_url(url, decode_responses=True, **ssl_kwargs, socket_connect_timeout=10)
+        await r.ping()
+        await r.aclose()
+        results["redis"] = "ok"
+    except Exception as e:
+        results["redis"] = str(e)
+    return results
+
+
 @app.get("/")
 async def serve_index():
     return FileResponse("frontend/index.html")
