@@ -139,7 +139,17 @@ CREATE INDEX IF NOT EXISTS idx_oracle_forecasts_loc_topic_created_at ON oracle_f
 
 async def init_db():
     global _pool
-    _pool = await asyncpg.create_pool(settings.database_url, min_size=2, max_size=10)
+    import ssl
+    # Strip libpq-style sslmode param — asyncpg handles SSL via ssl= kwarg
+    dsn = settings.database_url
+    ssl_ctx: ssl.SSLContext | bool = False
+    if "sslmode=require" in dsn or "sslmode=verify" in dsn or dsn.startswith("postgresql+ssl"):
+        import re
+        dsn = re.sub(r"[?&]sslmode=[^&]*", "", dsn).rstrip("?")
+        ssl_ctx = ssl.create_default_context()
+        ssl_ctx.check_hostname = False
+        ssl_ctx.verify_mode = ssl.CERT_NONE
+    _pool = await asyncpg.create_pool(dsn, min_size=1, max_size=5, ssl=ssl_ctx or None)
     async with _pool.acquire() as conn:
         await conn.execute(SCHEMA_SQL)
     logger.info("PostgreSQL connected and schema initialized")

@@ -18,9 +18,18 @@ DISTRICT_TTL = 65
 
 async def init_redis():
     global _redis
-    _redis = aioredis.from_url(settings.redis_url, decode_responses=True)
+    url = settings.redis_url
+    # Upstash uses rediss:// (TLS) — disable cert verification for managed cloud Redis
+    ssl_kwargs = {}
+    if url.startswith("rediss://"):
+        import ssl
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        ssl_kwargs["ssl"] = ctx
+    _redis = aioredis.from_url(url, decode_responses=True, **ssl_kwargs)
     await _redis.ping()
-    logger.info("Redis connected: %s", settings.redis_url.split("@")[-1] if "@" in settings.redis_url else settings.redis_url)
+    logger.info("Redis connected: %s", url.split("@")[-1] if "@" in url else url)
 
 
 async def close_redis():
