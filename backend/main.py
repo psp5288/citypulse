@@ -185,11 +185,11 @@ async def debug_health():
     import ssl, re, os
     db_url = os.environ.get("DATABASE_URL") or settings.database_url
     redis_url = os.environ.get("REDIS_URL") or settings.redis_url
+    db_raw = os.environ.get("DATABASE_URL", "")
+    redis_raw = os.environ.get("REDIS_URL", "")
     results = {
-        "env_database_url": ("SET" if os.environ.get("DATABASE_URL") else "MISSING"),
-        "env_redis_url": ("SET" if os.environ.get("REDIS_URL") else "MISSING"),
-        "config_db_host": db_url.split("@")[-1].split("/")[0] if "@" in db_url else db_url,
-        "config_redis_host": redis_url.split("@")[-1] if "@" in redis_url else redis_url,
+        "db_url_starts_with": db_raw[:30] if db_raw else "EMPTY",
+        "redis_url_starts_with": redis_raw[:20] if redis_raw else "EMPTY",
     }
     # Test Postgres
     try:
