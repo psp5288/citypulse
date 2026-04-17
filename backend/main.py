@@ -210,12 +210,7 @@ async def debug_health():
     # Test Redis
     try:
         import redis.asyncio as aioredis
-        ssl_kwargs = {}
-        if redis_url.startswith("rediss://"):
-            ctx = ssl.create_default_context()
-            ctx.check_hostname = False
-            ctx.verify_mode = ssl.CERT_NONE
-            ssl_kwargs["ssl"] = ctx
+        ssl_kwargs = {"ssl_cert_reqs": "none"} if redis_url.startswith("rediss://") else {}
         r = aioredis.from_url(redis_url, decode_responses=True, **ssl_kwargs, socket_connect_timeout=10)
         await r.ping()
         await r.aclose()

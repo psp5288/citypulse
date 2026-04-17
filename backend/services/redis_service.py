@@ -23,11 +23,7 @@ async def init_redis():
     # Upstash uses rediss:// (TLS) — disable cert verification for managed cloud Redis
     ssl_kwargs = {}
     if url.startswith("rediss://"):
-        import ssl
-        ctx = ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
-        ssl_kwargs["ssl"] = ctx
+        ssl_kwargs["ssl_cert_reqs"] = "none"
     _redis = aioredis.from_url(url, decode_responses=True, **ssl_kwargs)
     await _redis.ping()
     logger.info("Redis connected: %s", url.split("@")[-1] if "@" in url else url)

@@ -143,9 +143,10 @@ async def init_db():
     # Read directly from env to bypass any pydantic-settings caching issues
     dsn = os.environ.get("DATABASE_URL") or settings.database_url
     ssl_ctx: ssl.SSLContext | bool = False
-    if "sslmode=require" in dsn or "sslmode=verify" in dsn or dsn.startswith("postgresql+ssl"):
+    if any(p in dsn for p in ("sslmode=", "channel_binding=", "sslcert=", "sslkey=")):
         import re
-        dsn = re.sub(r"[?&]sslmode=[^&]*", "", dsn).rstrip("?")
+        dsn = re.sub(r"[?&](sslmode|channel_binding|sslcert|sslkey|sslrootcert)=[^&]*", "", dsn)
+        dsn = re.sub(r"\?&", "?", dsn).rstrip("?&")
         ssl_ctx = ssl.create_default_context()
         ssl_ctx.check_hostname = False
         ssl_ctx.verify_mode = ssl.CERT_NONE
