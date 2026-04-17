@@ -142,15 +142,12 @@ async def init_db():
     import ssl, os
     # Read directly from env to bypass any pydantic-settings caching issues
     dsn = os.environ.get("DATABASE_URL") or settings.database_url
-    ssl_ctx: ssl.SSLContext | bool = False
-    if any(p in dsn for p in ("sslmode=", "channel_binding=", "sslcert=", "sslkey=")):
-        import re
-        dsn = re.sub(r"[?&](sslmode|channel_binding|sslcert|sslkey|sslrootcert)=[^&]*", "", dsn)
-        dsn = re.sub(r"\?&", "?", dsn).rstrip("?&")
-        ssl_ctx = ssl.create_default_context()
-        ssl_ctx.check_hostname = False
-        ssl_ctx.verify_mode = ssl.CERT_NONE
-    _pool = await asyncpg.create_pool(dsn, min_size=1, max_size=5, ssl=ssl_ctx or None)
+    # Strip all query params — asyncpg uses ssl= kwarg, not URL params
+    dsn = dsn.split("?")[0]
+    ssl_ctx = ssl.create_default_context()
+    ssl_ctx.check_hostname = False
+    ssl_ctx.verify_mode = ssl.CERT_NONE
+    _pool = await asyncpg.create_pool(dsn, min_size=1, max_size=5, ssl=ssl_ctx)
     async with _pool.acquire() as conn:
         await conn.execute(SCHEMA_SQL)
     logger.info("PostgreSQL connected and schema initialized")

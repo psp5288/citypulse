@@ -194,13 +194,10 @@ async def debug_health():
     # Test Postgres
     try:
         import asyncpg
-        dsn = db_url
-        ssl_ctx = None
-        if "sslmode=require" in dsn or "sslmode=verify" in dsn:
-            dsn = re.sub(r"[?&]sslmode=[^&]*", "", dsn).rstrip("?")
-            ssl_ctx = ssl.create_default_context()
-            ssl_ctx.check_hostname = False
-            ssl_ctx.verify_mode = ssl.CERT_NONE
+        dsn = db_url.split("?")[0]
+        ssl_ctx = ssl.create_default_context()
+        ssl_ctx.check_hostname = False
+        ssl_ctx.verify_mode = ssl.CERT_NONE
         pool = await asyncpg.create_pool(dsn, min_size=1, max_size=1, ssl=ssl_ctx, timeout=10)
         await pool.fetchval("SELECT 1")
         await pool.close()
